@@ -2,24 +2,41 @@ import os
 import io
 import csv
 import html
+import json
+import time
+import hmac
+import hashlib
+import secrets
 import sqlite3
 import shutil
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
+
+try:
+    from app.extras import (router as extras_router, migrate, vomit_keys, relevant_keys,
+                            vomit_label, rating_labels, max_score)
+    from app.health import router as health_router, migrate_health
+    from app.push import router as push_router, start_scheduler
+except ImportError:  # Start ohne Paketstruktur (z. B. "uvicorn main:app")
+    from extras import (router as extras_router, migrate, vomit_keys, relevant_keys,
+                        vomit_label, rating_labels, max_score)
+    from health import router as health_router, migrate_health
+    from push import router as push_router, start_scheduler
 
 app = FastAPI(title="Futter")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-DATA_DIR = "/app/data"
 DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 DB_PATH = os.path.join(DATA_DIR, "tracker.db")
+KINDS = ("food", "snack", "drink")
+IMG_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -34,32 +51,9 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
-
-    # Tabelle: Einstellungen (Sprache, Setup-Status, Bewertungs-Begriffe)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    """)
-
-    # Tabelle: Katzen
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS cats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
-        )
-    """)
-
-    # Tabelle: Hersteller
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS manufacturers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
-        )
-    """)
-
-    # Tabelle: Futtersorten
+    c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)")
+    c.execute("CREATE TABLE IF NOT EXISTS manufacturers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)")
     c.execute("""
         CREATE TABLE IF NOT EXISTS foods (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,8 +63,6 @@ def init_db():
             UNIQUE(manufacturer_id, name)
         )
     """)
-
-    # Tabelle: Fütterungen (inkl. batch_id für Gruppierung)
     c.execute("""
         CREATE TABLE IF NOT EXISTS feedings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,34 +77,24 @@ def init_db():
             timestamp TEXT NOT NULL
         )
     """)
-
-    # Prüfen, ob batch_id in einer bestehenden Datenbank nachgerüstet werden muss
     cols = [row["name"] for row in c.execute("PRAGMA table_info(feedings)").fetchall()]
     if "batch_id" not in cols:
         c.execute("ALTER TABLE feedings ADD COLUMN batch_id TEXT")
 
-    # Bestehende Einträge ohne batch_id automatisch nach (Zeitpunkt + Futter + Notiz) gruppieren
-    null_batches = c.execute("SELECT COUNT(*) as cnt FROM feedings WHERE batch_id IS NULL OR batch_id = ''").fetchone()["cnt"]
-    if null_batches > 0:
+    # Alte Einträge ohne batch_id nach (Zeitpunkt + Futter + Notiz) gruppieren
+    if c.execute("SELECT COUNT(*) AS cnt FROM feedings WHERE batch_id IS NULL OR batch_id = ''").fetchone()["cnt"] > 0:
         groups = c.execute("""
-            SELECT timestamp, manufacturer_name, food_name, IFNULL(notes, '') as n
-            FROM feedings
-            WHERE batch_id IS NULL OR batch_id = ''
+            SELECT timestamp, manufacturer_name, food_name, IFNULL(notes, '') AS n
+            FROM feedings WHERE batch_id IS NULL OR batch_id = ''
             GROUP BY timestamp, manufacturer_name, food_name, IFNULL(notes, '')
         """).fetchall()
         for g in groups:
-            b_id = str(uuid.uuid4())
             c.execute("""
-                UPDATE feedings
-                SET batch_id = ?
-                WHERE (batch_id IS NULL OR batch_id = '')
-                  AND timestamp = ?
-                  AND manufacturer_name = ?
-                  AND food_name = ?
-                  AND IFNULL(notes, '') = ?
-            """, (b_id, g["timestamp"], g["manufacturer_name"], g["food_name"], g["n"]))
+                UPDATE feedings SET batch_id = ?
+                WHERE (batch_id IS NULL OR batch_id = '') AND timestamp = ?
+                  AND manufacturer_name = ? AND food_name = ? AND IFNULL(notes, '') = ?
+            """, (str(uuid.uuid4()), g["timestamp"], g["manufacturer_name"], g["food_name"], g["n"]))
 
-    # Tabelle: Spuck-Ereignisse
     c.execute("""
         CREATE TABLE IF NOT EXISTS vomits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,21 +105,17 @@ def init_db():
             image_path TEXT
         )
     """)
-
-    # Prüfen, ob vomit_type in einer bestehenden Datenbank nachgerüstet werden muss
     v_cols = [row["name"] for row in c.execute("PRAGMA table_info(vomits)").fetchall()]
     if "vomit_type" not in v_cols:
         c.execute("ALTER TABLE vomits ADD COLUMN vomit_type TEXT DEFAULT 'food'")
         c.execute("UPDATE vomits SET vomit_type = 'food' WHERE vomit_type IS NULL OR vomit_type = ''")
 
-    # Standard-Hersteller & Futter anlegen, falls leer
-    c.execute("SELECT COUNT(*) as cnt FROM manufacturers")
-    if c.fetchone()["cnt"] == 0:
+    if c.execute("SELECT COUNT(*) AS cnt FROM manufacturers").fetchone()["cnt"] == 0:
         default_data = {
             "MAC's": ["Rind & Hühnerherzen", "Ente, Pute & Huhn", "Lachs & Huhn"],
             "Mjamjam": ["Saftiges Huhn an Möhrchen", "Känguru pur", "Insekt & Huhn"],
             "Catz Finefood": ["Geflügel", "Wild & Rotbarsch", "Lamm & Kaninchen"],
-            "Animonda Carny": ["Rind pur", "Rind + Huhn", "Multifleisch-Cocktail"]
+            "Animonda Carny": ["Rind pur", "Rind + Huhn", "Multifleisch-Cocktail"],
         }
         for man_name, food_list in default_data.items():
             c.execute("INSERT INTO manufacturers (name) VALUES (?)", (man_name,))
@@ -145,33 +123,23 @@ def init_db():
             for f_name in food_list:
                 c.execute("INSERT INTO foods (manufacturer_id, name) VALUES (?, ?)", (man_id, f_name))
 
-    # Standard-Settings initialisieren
-    default_settings = {
-        "language": "de",
-        "rating_3": "Weggeatmet",
-        "rating_2": "Okay",
-        "rating_1": "Verweigert",
-        "setup_completed": "0"
-    }
-    for k, v in default_settings.items():
+    for k, v in {"language": "de", "rating_3": "Weggeatmet", "rating_2": "Okay",
+                 "rating_1": "Verweigert", "setup_completed": "0"}.items():
         c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
-    # Migration bestehender Katzen aus der Historie (damit bei Upgrade keine Daten fehlen)
-    cat_cnt = c.execute("SELECT COUNT(*) as cnt FROM cats").fetchone()["cnt"]
-    feed_cnt = c.execute("SELECT COUNT(*) as cnt FROM feedings").fetchone()["cnt"]
-    vomit_cnt = c.execute("SELECT COUNT(*) as cnt FROM vomits").fetchone()["cnt"]
-
+    # Katzen aus der Historie übernehmen (Upgrade-Fall)
+    cat_cnt = c.execute("SELECT COUNT(*) AS cnt FROM cats").fetchone()["cnt"]
+    feed_cnt = c.execute("SELECT COUNT(*) AS cnt FROM feedings").fetchone()["cnt"]
+    vomit_cnt = c.execute("SELECT COUNT(*) AS cnt FROM vomits").fetchone()["cnt"]
     if cat_cnt == 0 and (feed_cnt > 0 or vomit_cnt > 0):
-        existing_cats = set()
-        for r in c.execute("SELECT DISTINCT cat_name FROM feedings").fetchall():
-            if r["cat_name"] and r["cat_name"] != "Unbekannt":
-                existing_cats.add(r["cat_name"])
-        for r in c.execute("SELECT DISTINCT cat_name FROM vomits").fetchall():
-            if r["cat_name"] and r["cat_name"] != "Unbekannt":
-                existing_cats.add(r["cat_name"])
-        for cname in sorted(existing_cats):
+        existing = set()
+        for tbl in ("feedings", "vomits"):
+            for r in c.execute(f"SELECT DISTINCT cat_name FROM {tbl}").fetchall():
+                if r["cat_name"] and r["cat_name"] != "Unbekannt":
+                    existing.add(r["cat_name"])
+        for cname in sorted(existing):
             c.execute("INSERT OR IGNORE INTO cats (name) VALUES (?)", (cname,))
-        if existing_cats:
+        if existing:
             c.execute("UPDATE settings SET value = '1' WHERE key = 'setup_completed'")
 
     conn.commit()
@@ -179,9 +147,193 @@ def init_db():
 
 
 init_db()
+migrate()                       # Tierarten, Reihenfolge, kind-Spalten, Spuck-Kategorien, Bewertungsstufen
+app.include_router(extras_router)
+migrate_health()                # Geburtstag, Gesundheitsfelder und -werte
+app.include_router(health_router)
+app.include_router(push_router)  # Push-Erinnerung (braucht das Paket "pywebpush")
 
 
-# --- PYDANTIC MODELLE ---
+@app.on_event("startup")
+async def _start_push_scheduler():
+    start_scheduler()
+
+
+# ======================= BENUTZER & LOGIN =======================
+
+COOKIE = "cft_session"
+SESSION_DAYS = 400                      # so lange bleibt ein Gerät angemeldet
+OPEN_PATHS = {"/api/auth/status", "/api/login", "/api/setup-admin"}
+
+
+def init_auth_tables():
+    conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+        pw_hash TEXT NOT NULL, is_admin INTEGER DEFAULT 0, prefs TEXT DEFAULT '{}')""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS sessions (
+        token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created REAL, last_seen REAL)""")
+    conn.commit()
+    conn.close()
+
+
+init_auth_tables()
+
+
+def hash_pw(pw: str) -> str:
+    salt = secrets.token_bytes(16)
+    return salt.hex() + ":" + hashlib.scrypt(pw.encode(), salt=salt, n=2**14, r=8, p=1).hex()
+
+
+def check_pw(pw: str, stored: str) -> bool:
+    salt, h = stored.split(":")
+    test = hashlib.scrypt(pw.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
+    return hmac.compare_digest(test, h)
+
+
+def _th(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def current_user(request: Request):
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return None
+    conn = get_db()
+    row = conn.execute("""
+        SELECT u.id, u.username, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = ? AND s.last_seen > ?
+    """, (_th(token), time.time() - SESSION_DAYS * 86400)).fetchone()
+    if row:
+        conn.execute("UPDATE sessions SET last_seen = ? WHERE token_hash = ?", (time.time(), _th(token)))
+        conn.commit()
+    conn.close()
+    return dict(row) if row else None
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    p = request.url.path
+    if (p.startswith("/api/") or p.startswith("/uploads/")) and p not in OPEN_PATHS:
+        user = current_user(request)
+        if not user:
+            return JSONResponse({"detail": "Nicht angemeldet"}, status_code=401)
+        request.state.user = user
+    return await call_next(request)
+
+
+class Credentials(BaseModel):
+    username: str
+    password: str
+
+
+def _new_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    conn = get_db()
+    conn.execute("INSERT INTO sessions (token_hash, user_id, created, last_seen) VALUES (?, ?, ?, ?)",
+                 (_th(token), user_id, time.time(), time.time()))
+    conn.commit()
+    conn.close()
+    return token
+
+
+def _set_cookie(response: Response, request: Request, token: str):
+    response.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
+                        samesite="lax", secure=request.url.scheme == "https")
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request, response: Response):
+    conn = get_db()
+    n = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    conn.close()
+    user = current_user(request)
+    if user:  # Cookie bei jedem App-Start verlängern
+        _set_cookie(response, request, request.cookies.get(COOKIE))
+    return {"needs_setup": n == 0, "user": user}
+
+
+@app.post("/api/setup-admin")
+def setup_admin(data: Credentials, request: Request, response: Response):
+    conn = get_db()
+    if conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"] > 0:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Einrichtung bereits abgeschlossen")
+    name = data.username.strip()
+    if not name or len(data.password) < 8:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Name angeben, Passwort mind. 8 Zeichen")
+    cur = conn.execute("INSERT INTO users (username, pw_hash, is_admin) VALUES (?, ?, 1)", (name, hash_pw(data.password)))
+    conn.commit()
+    uid = cur.lastrowid
+    conn.close()
+    _set_cookie(response, request, _new_session(uid))
+    return {"status": "ok"}
+
+
+@app.post("/api/login")
+def login(data: Credentials, request: Request, response: Response):
+    conn = get_db()
+    row = conn.execute("SELECT id, pw_hash FROM users WHERE username = ?", (data.username.strip(),)).fetchone()
+    conn.close()
+    if not row or not check_pw(data.password, row["pw_hash"]):
+        time.sleep(0.6)  # bremst Durchprobieren; zusätzlich Rate-Limit im Reverse Proxy empfohlen
+        raise HTTPException(status_code=401, detail="Name oder Passwort falsch")
+    _set_cookie(response, request, _new_session(row["id"]))
+    return {"status": "ok"}
+
+
+@app.post("/api/logout")
+def logout(request: Request, response: Response):
+    token = request.cookies.get(COOKIE)
+    if token:
+        conn = get_db()
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_th(token),))
+        conn.commit()
+        conn.close()
+    response.delete_cookie(COOKIE)
+    return {"status": "ok"}
+
+
+@app.post("/api/users")
+def create_user(data: Credentials, request: Request):
+    if not request.state.user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    name = data.username.strip()
+    if not name or len(data.password) < 8:
+        raise HTTPException(status_code=400, detail="Name angeben, Passwort mind. 8 Zeichen")
+    conn = get_db()
+    try:
+        conn.execute("INSERT INTO users (username, pw_hash) VALUES (?, ?)", (name, hash_pw(data.password)))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Benutzer existiert bereits")
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.get("/api/prefs")
+def get_prefs(request: Request):
+    conn = get_db()
+    row = conn.execute("SELECT prefs FROM users WHERE id = ?", (request.state.user["id"],)).fetchone()
+    conn.close()
+    return json.loads(row["prefs"] or "{}")
+
+
+@app.put("/api/prefs")
+def put_prefs(prefs: dict, request: Request):
+    raw = json.dumps(prefs)
+    if len(raw) > 100_000:
+        raise HTTPException(status_code=413, detail="Einstellungen zu groß")
+    conn = get_db()
+    conn.execute("UPDATE users SET prefs = ? WHERE id = ?", (raw, request.state.user["id"]))
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
+
+# ======================= PYDANTIC MODELLE =======================
 
 class SettingsUpdate(BaseModel):
     language: Optional[str] = None
@@ -220,9 +372,10 @@ class FeedingBatchPayload(BaseModel):
     food_id: int
     notes: Optional[str] = ""
     timestamp: Optional[str] = None
+    kind: Optional[str] = "food"        # food | snack | drink
 
 
-# --- ROUTEN: SETTINGS & ERST-SETUP ---
+# ======================= SETTINGS & ERST-SETUP =======================
 
 @app.get("/api/settings")
 def get_settings():
@@ -235,11 +388,9 @@ def get_settings():
 @app.put("/api/settings")
 def update_settings(data: SettingsUpdate):
     conn = get_db()
-    c = conn.cursor()
-    updates = data.dict(exclude_unset=True)
-    for k, v in updates.items():
+    for k, v in data.dict(exclude_unset=True).items():
         if v is not None:
-            c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v).strip()))
+            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v).strip()))
     conn.commit()
     conn.close()
     return get_settings()
@@ -247,38 +398,28 @@ def update_settings(data: SettingsUpdate):
 
 @app.post("/api/setup")
 def complete_initial_setup(data: InitialSetupPayload):
-    clean_cats = [x.strip() for x in data.cats if x.strip()]
-    if not clean_cats:
-        raise HTTPException(status_code=400, detail="Mindestens eine Katze angeben")
-
+    clean = [x.strip() for x in data.cats if x.strip()]
+    if not clean:
+        raise HTTPException(status_code=400, detail="Mindestens ein Tier angeben")
     conn = get_db()
     c = conn.cursor()
     lang = "en" if data.language == "en" else "de"
     c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('language', ?)", (lang,))
-
-    # Falls Englisch beim Erststart gewählt wurde und noch die deutschen Standard-Begriffe drin stehen, anpassen
-    if lang == "en":
-        r3 = c.execute("SELECT value FROM settings WHERE key = 'rating_3'").fetchone()
-        if r3 and r3["value"] == "Weggeatmet":
-            c.execute("UPDATE settings SET value = 'Inhaled' WHERE key = 'rating_3'")
-            c.execute("UPDATE settings SET value = 'Okay' WHERE key = 'rating_2'")
-            c.execute("UPDATE settings SET value = 'Refused' WHERE key = 'rating_1'")
-
-    for cname in clean_cats:
+    for cname in clean:
         c.execute("INSERT OR IGNORE INTO cats (name) VALUES (?)", (cname,))
-
+    c.execute("UPDATE cats SET sort = id WHERE sort IS NULL OR sort = 0")
     c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_completed', '1')")
     conn.commit()
     conn.close()
     return {"status": "ok"}
 
 
-# --- ROUTEN: KATZEN ---
+# ======================= TIERE (Tabelle "cats") =======================
 
 @app.get("/api/cats")
 def get_cats():
     conn = get_db()
-    rows = conn.execute("SELECT id, name FROM cats ORDER BY id ASC").fetchall()
+    rows = conn.execute("SELECT id, name, species FROM cats ORDER BY sort, id").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -291,12 +432,12 @@ def create_cat(data: CatCreate):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO cats (name) VALUES (?)", (name,))
+        c.execute("INSERT INTO cats (name, sort) VALUES (?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM cats))", (name,))
         conn.commit()
         new_id = c.lastrowid
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=400, detail="Katze existiert bereits")
+        raise HTTPException(status_code=400, detail="Tier existiert bereits")
     conn.close()
     return {"id": new_id, "name": name}
 
@@ -311,25 +452,23 @@ def update_cat(cat_id: int, data: CatUpdate):
     row = c.execute("SELECT name FROM cats WHERE id = ?", (cat_id,)).fetchone()
     if not row:
         conn.close()
-        raise HTTPException(status_code=404, detail="Katze nicht gefunden")
+        raise HTTPException(status_code=404, detail="Tier nicht gefunden")
     old_name = row["name"]
-
     try:
         c.execute("UPDATE cats SET name = ? WHERE id = ?", (new_name, cat_id))
-        # Historie & Spuck-Einträge automatisch mit umbenennen
         c.execute("UPDATE feedings SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
         c.execute("UPDATE vomits SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=400, detail="Eine Katze mit diesem Namen existiert bereits")
+        raise HTTPException(status_code=400, detail="Ein Tier mit diesem Namen existiert bereits")
     conn.close()
     return {"status": "ok", "id": cat_id, "name": new_name}
 
 
 @app.delete("/api/cats/{cat_id}")
 def delete_cat(cat_id: int):
-    # Löscht nur die Katze aus der aktiven Auswahl; Historie bleibt erhalten!
+    # Entfernt das Tier nur aus der aktiven Auswahl; die Historie bleibt erhalten.
     conn = get_db()
     conn.execute("DELETE FROM cats WHERE id = ?", (cat_id,))
     conn.commit()
@@ -337,12 +476,12 @@ def delete_cat(cat_id: int):
     return {"status": "deleted"}
 
 
-# --- ROUTEN: HERSTELLER & FUTTERSORTEN ---
+# ======================= HERSTELLER & SORTEN =======================
 
 @app.get("/api/manufacturers")
 def get_manufacturers():
     conn = get_db()
-    rows = conn.execute("SELECT id, name FROM manufacturers ORDER BY name COLLATE NOCASE").fetchall()
+    rows = conn.execute("SELECT id, name, kind FROM manufacturers ORDER BY name COLLATE NOCASE").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -377,11 +516,10 @@ def update_manufacturer(man_id: int, data: ManufacturerUpdate):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Hersteller nicht gefunden")
-    old_name = row["name"]
-
     try:
         c.execute("UPDATE manufacturers SET name = ? WHERE id = ?", (name, man_id))
-        c.execute("UPDATE feedings SET manufacturer_name = ? WHERE manufacturer_id = ? OR manufacturer_name = ?", (name, man_id, old_name))
+        c.execute("UPDATE feedings SET manufacturer_name = ? WHERE manufacturer_id = ? OR manufacturer_name = ?",
+                  (name, man_id, row["name"]))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -393,9 +531,8 @@ def update_manufacturer(man_id: int, data: ManufacturerUpdate):
 @app.delete("/api/manufacturers/{man_id}")
 def delete_manufacturer(man_id: int):
     conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM foods WHERE manufacturer_id = ?", (man_id,))
-    c.execute("DELETE FROM manufacturers WHERE id = ?", (man_id,))
+    conn.execute("DELETE FROM foods WHERE manufacturer_id = ?", (man_id,))
+    conn.execute("DELETE FROM manufacturers WHERE id = ?", (man_id,))
     conn.commit()
     conn.close()
     return {"status": "deleted"}
@@ -438,12 +575,11 @@ def update_food(food_id: int, data: FoodUpdate):
     row = c.execute("SELECT name FROM foods WHERE id = ?", (food_id,)).fetchone()
     if not row:
         conn.close()
-        raise HTTPException(status_code=404, detail="Futtersorte nicht gefunden")
-    old_name = row["name"]
-
+        raise HTTPException(status_code=404, detail="Sorte nicht gefunden")
     try:
         c.execute("UPDATE foods SET name = ?, manufacturer_id = ? WHERE id = ?", (name, data.manufacturer_id, food_id))
-        c.execute("UPDATE feedings SET food_name = ?, manufacturer_id = ? WHERE food_id = ? OR food_name = ?", (name, data.manufacturer_id, food_id, old_name))
+        c.execute("UPDATE feedings SET food_name = ?, manufacturer_id = ? WHERE food_id = ? OR food_name = ?",
+                  (name, data.manufacturer_id, food_id, row["name"]))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -455,22 +591,44 @@ def update_food(food_id: int, data: FoodUpdate):
 @app.delete("/api/foods/{food_id}")
 def delete_food(food_id: int):
     conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM foods WHERE id = ?", (food_id,))
+    conn.execute("DELETE FROM foods WHERE id = ?", (food_id,))
     conn.commit()
     conn.close()
     return {"status": "deleted"}
 
 
-# --- ROUTEN: FÜTTERUNGEN (GRUPPIERT NACH BATCH_ID) ---
+# ======================= FÜTTERUNGEN (Futter, Snacks, Getränke) =======================
+
+def _write_feedings(c, batch_id: str, data: FeedingBatchPayload):
+    man = c.execute("SELECT name FROM manufacturers WHERE id = ?", (data.manufacturer_id,)).fetchone()
+    food = c.execute("SELECT name FROM foods WHERE id = ?", (data.food_id,)).fetchone()
+    if not man or not food:
+        raise HTTPException(status_code=400, detail="Hersteller oder Sorte ungültig")
+    top = max_score()
+    if any(not 1 <= r <= top for r in data.cat_ratings.values()):
+        raise HTTPException(status_code=400, detail=f"Bewertung muss zwischen 1 und {top} liegen")
+    ts = data.timestamp or datetime.now().strftime("%Y-%m-%dT%H:%M")
+    kind = data.kind if data.kind in KINDS else "food"
+    ids = []
+    for cat_name, rating in data.cat_ratings.items():
+        c.execute("""
+            INSERT INTO feedings (batch_id, cat_name, manufacturer_id, food_id, manufacturer_name,
+                                  food_name, rating, notes, timestamp, kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (batch_id, cat_name, data.manufacturer_id, data.food_id, man["name"], food["name"],
+              rating, data.notes, ts, kind))
+        ids.append(c.lastrowid)
+    return ids
+
 
 @app.get("/api/feedings")
-def get_feedings(limit: int = 1000):
+def get_feedings(limit: int = 1000, kind: Optional[str] = None):
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM feedings ORDER BY timestamp DESC, id DESC LIMIT ?",
-        (limit,)
-    ).fetchall()
+    if kind in KINDS:
+        rows = conn.execute("SELECT * FROM feedings WHERE kind = ? ORDER BY timestamp DESC, id DESC LIMIT ?",
+                            (kind, limit)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM feedings ORDER BY timestamp DESC, id DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -478,59 +636,29 @@ def get_feedings(limit: int = 1000):
 @app.post("/api/feedings")
 def create_feeding(data: FeedingBatchPayload):
     if not data.cat_ratings:
-        raise HTTPException(status_code=400, detail="Mindestens eine Katze auswählen")
-
+        raise HTTPException(status_code=400, detail="Mindestens ein Tier auswählen")
     conn = get_db()
-    c = conn.cursor()
-
-    man = c.execute("SELECT name FROM manufacturers WHERE id = ?", (data.manufacturer_id,)).fetchone()
-    food = c.execute("SELECT name FROM foods WHERE id = ?", (data.food_id,)).fetchone()
-    if not man or not food:
+    try:
+        batch_id = str(uuid.uuid4())
+        ids = _write_feedings(conn.cursor(), batch_id, data)
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=400, detail="Hersteller oder Futter ungültig")
-
-    ts = data.timestamp if data.timestamp else datetime.now().strftime("%Y-%m-%dT%H:%M")
-    batch_id = str(uuid.uuid4())
-
-    created_ids = []
-    for cat_name, rating in data.cat_ratings.items():
-        c.execute("""
-            INSERT INTO feedings (batch_id, cat_name, manufacturer_id, food_id, manufacturer_name, food_name, rating, notes, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (batch_id, cat_name, data.manufacturer_id, data.food_id, man["name"], food["name"], rating, data.notes, ts))
-        created_ids.append(c.lastrowid)
-
-    conn.commit()
-    conn.close()
-    return {"status": "ok", "batch_id": batch_id, "created": created_ids}
+    return {"status": "ok", "batch_id": batch_id, "created": ids}
 
 
 @app.put("/api/feedings/batch/{batch_id}")
 def update_feeding_batch(batch_id: str, data: FeedingBatchPayload):
     if not data.cat_ratings:
-        raise HTTPException(status_code=400, detail="Mindestens eine Katze auswählen")
-
+        raise HTTPException(status_code=400, detail="Mindestens ein Tier auswählen")
     conn = get_db()
-    c = conn.cursor()
-
-    man = c.execute("SELECT name FROM manufacturers WHERE id = ?", (data.manufacturer_id,)).fetchone()
-    food = c.execute("SELECT name FROM foods WHERE id = ?", (data.food_id,)).fetchone()
-    if not man or not food:
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM feedings WHERE batch_id = ?", (batch_id,))
+        _write_feedings(c, batch_id, data)
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=400, detail="Hersteller oder Futter ungültig")
-
-    ts = data.timestamp if data.timestamp else datetime.now().strftime("%Y-%m-%dT%H:%M")
-
-    # Alte Einträge dieser Fütterungsgruppe ersetzen
-    c.execute("DELETE FROM feedings WHERE batch_id = ?", (batch_id,))
-    for cat_name, rating in data.cat_ratings.items():
-        c.execute("""
-            INSERT INTO feedings (batch_id, cat_name, manufacturer_id, food_id, manufacturer_name, food_name, rating, notes, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (batch_id, cat_name, data.manufacturer_id, data.food_id, man["name"], food["name"], rating, data.notes, ts))
-
-    conn.commit()
-    conn.close()
     return {"status": "ok"}
 
 
@@ -543,32 +671,25 @@ def delete_feeding_batch(batch_id: str):
     return {"status": "deleted"}
 
 
-# --- ROUTEN: SPUCK-TRACKER & 12h-KORRELATION ---
+# ======================= SPUCK-TRACKER (12h-Korrelation) =======================
 
 def get_recent_feedings_for_vomit(conn, cat_name: str, vomit_ts_str: str):
     try:
         vomit_dt = datetime.fromisoformat(vomit_ts_str)
     except ValueError:
         return []
-    start_dt = vomit_dt - timedelta(hours=12)
-    start_str = start_dt.strftime("%Y-%m-%dT%H:%M")
+    start_str = (vomit_dt - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M")
     end_str = vomit_dt.strftime("%Y-%m-%dT%H:%M")
-
     if cat_name in ("Unbekannt", "Unknown"):
         rows = conn.execute("""
-            SELECT cat_name, manufacturer_name, food_name, timestamp
-            FROM feedings
-            WHERE timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp DESC
+            SELECT cat_name, manufacturer_name, food_name, timestamp, kind FROM feedings
+            WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC
         """, (start_str, end_str)).fetchall()
     else:
         rows = conn.execute("""
-            SELECT cat_name, manufacturer_name, food_name, timestamp
-            FROM feedings
-            WHERE cat_name = ? AND timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp DESC
+            SELECT cat_name, manufacturer_name, food_name, timestamp, kind FROM feedings
+            WHERE cat_name = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC
         """, (cat_name, start_str, end_str)).fetchall()
-
     return [dict(r) for r in rows]
 
 
@@ -579,8 +700,7 @@ def get_vomits(limit: int = 200):
     result = []
     for r in rows:
         item = dict(r)
-        if not item.get("vomit_type"):
-            item["vomit_type"] = "food"
+        item["vomit_type"] = item.get("vomit_type") or "food"
         item["recent_feedings"] = get_recent_feedings_for_vomit(conn, item["cat_name"], item["timestamp"])
         result.append(item)
     conn.close()
@@ -593,30 +713,79 @@ async def create_vomit(
     vomit_type: Optional[str] = Form("food"),
     timestamp: Optional[str] = Form(None),
     notes: Optional[str] = Form(""),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
 ):
-    ts = timestamp if timestamp else datetime.now().strftime("%Y-%m-%dT%H:%M")
-    v_type = vomit_type if vomit_type in ("food", "bile_grass", "hairball", "other") else "food"
+    ts = timestamp or datetime.now().strftime("%Y-%m-%dT%H:%M")
+    v_type = vomit_type if vomit_type in vomit_keys() else "food"
     img_rel_path = None
-
     if image and image.filename:
-        ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
+        ext = os.path.splitext(image.filename)[1].lower()
+        if ext not in IMG_EXT:
+            ext = ".jpg"
         safe_name = f"vomit_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}"
-        full_path = os.path.join(UPLOAD_DIR, safe_name)
-        with open(full_path, "wb") as buffer:
+        with open(os.path.join(UPLOAD_DIR, safe_name), "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
         img_rel_path = f"/uploads/{safe_name}"
-
     conn = get_db()
     c = conn.cursor()
-    c.execute("""
-        INSERT INTO vomits (cat_name, vomit_type, timestamp, notes, image_path)
-        VALUES (?, ?, ?, ?, ?)
-    """, (cat_name, v_type, ts, notes, img_rel_path))
+    c.execute("INSERT INTO vomits (cat_name, vomit_type, timestamp, notes, image_path) VALUES (?, ?, ?, ?, ?)",
+              (cat_name, v_type, ts, notes, img_rel_path))
     conn.commit()
     new_id = c.lastrowid
     conn.close()
     return {"status": "ok", "id": new_id}
+
+
+def _store_image(image: UploadFile) -> str:
+    ext = os.path.splitext(image.filename)[1].lower()
+    if ext not in IMG_EXT:
+        ext = ".jpg"
+    name = f"vomit_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}"
+    with open(os.path.join(UPLOAD_DIR, name), "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+    return f"/uploads/{name}"
+
+
+def _remove_image(rel_path: Optional[str]):
+    if rel_path:
+        path = os.path.join(UPLOAD_DIR, os.path.basename(rel_path))
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+@app.put("/api/vomits/{vomit_id}")
+async def update_vomit(
+    vomit_id: int,
+    cat_name: str = Form(...),
+    vomit_type: Optional[str] = Form("food"),
+    timestamp: Optional[str] = Form(None),
+    notes: Optional[str] = Form(""),
+    remove_image: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None),
+):
+    conn = get_db()
+    row = conn.execute("SELECT image_path, timestamp, vomit_type FROM vomits WHERE id = ?", (vomit_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    # ausgeblendete eigene Kategorien bleiben erlaubt, wenn der Eintrag sie schon hatte
+    v_type = vomit_type if (vomit_type in vomit_keys() or vomit_type == row["vomit_type"]) else "food"
+    img = row["image_path"]
+    if image and image.filename:          # neues Foto ersetzt das alte
+        new_img = _store_image(image)
+        _remove_image(img)
+        img = new_img
+    elif remove_image == "1":             # Foto entfernen
+        _remove_image(img)
+        img = None
+    conn.execute("UPDATE vomits SET cat_name = ?, vomit_type = ?, timestamp = ?, notes = ?, image_path = ? WHERE id = ?",
+                 (cat_name, v_type, timestamp or row["timestamp"], notes or "", img, vomit_id))
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
 
 
 @app.delete("/api/vomits/{vomit_id}")
@@ -624,11 +793,10 @@ def delete_vomit(vomit_id: int):
     conn = get_db()
     row = conn.execute("SELECT image_path FROM vomits WHERE id = ?", (vomit_id,)).fetchone()
     if row and row["image_path"]:
-        filename = os.path.basename(row["image_path"])
-        file_on_disk = os.path.join(UPLOAD_DIR, filename)
-        if os.path.exists(file_on_disk):
+        path = os.path.join(UPLOAD_DIR, os.path.basename(row["image_path"]))
+        if os.path.exists(path):
             try:
-                os.remove(file_on_disk)
+                os.remove(path)
             except OSError:
                 pass
     conn.execute("DELETE FROM vomits WHERE id = ?", (vomit_id,))
@@ -637,122 +805,97 @@ def delete_vomit(vomit_id: int):
     return {"status": "deleted"}
 
 
-# --- ROUTEN: EXPORT (CSV & PDF-BERICHT) ---
+# ======================= EXPORT (CSV & PDF-BERICHT) =======================
 
-def _vomit_type_label(vtype: str, lang: str = "de") -> str:
-    labels = {
-        "de": {
-            "food": "Unverdautes Futter",
-            "bile_grass": "Galle / Schaum / Gras",
-            "hairball": "Haarballen",
-            "other": "Sonstiges / Unklar"
-        },
-        "en": {
-            "food": "Undigested Food",
-            "bile_grass": "Bile / Foam / Grass",
-            "hairball": "Hairball",
-            "other": "Other / Unclear"
-        }
-    }
-    l_dict = labels["en"] if lang == "en" else labels["de"]
-    return l_dict.get(vtype or "food", l_dict["food"])
+KIND_DE = {"food": "Futter", "snack": "Snack", "drink": "Getränk"}
+KIND_EN = {"food": "Food", "snack": "Snack", "drink": "Drink"}
 
 
 @app.get("/api/export/csv")
-def export_csv():
+def export_csv(kind: Optional[str] = None, lang: Optional[str] = None):
     conn = get_db()
-    settings_rows = conn.execute("SELECT key, value FROM settings").fetchall()
-    s_map = {r["key"]: r["value"] for r in settings_rows}
-    lang = s_map.get("language", "de")
-    r_labels = {
-        3: s_map.get("rating_3", "Weggeatmet"),
-        2: s_map.get("rating_2", "Okay"),
-        1: s_map.get("rating_1", "Verweigert")
-    }
-
-    feedings_rows = conn.execute("SELECT * FROM feedings ORDER BY timestamp DESC, id DESC").fetchall()
-    vomits_rows = conn.execute("SELECT * FROM vomits ORDER BY timestamp DESC").fetchall()
+    s_map = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM settings").fetchall()}
+    lang = lang if lang in ("de", "en") else s_map.get("language", "de")
+    r_labels = rating_labels()
+    if kind in KINDS:
+        feedings = conn.execute("SELECT * FROM feedings WHERE kind = ? ORDER BY timestamp DESC, id DESC", (kind,)).fetchall()
+    else:
+        feedings = conn.execute("SELECT * FROM feedings ORDER BY timestamp DESC, id DESC").fetchall()
+    vomits = conn.execute("SELECT * FROM vomits ORDER BY timestamp DESC").fetchall()
     conn.close()
 
-    # Vorbereiten der futterrelevanten Spuck-Ereignisse (12h-Fenster)
+    rel = relevant_keys()
     food_vomits = []
-    for v in vomits_rows:
-        vtype = v["vomit_type"] if "vomit_type" in v.keys() and v["vomit_type"] else "food"
-        if vtype in ("food", "other"):
+    for v in vomits:
+        vtype = v["vomit_type"] or "food"
+        if vtype in rel:
             try:
-                v_dt = datetime.fromisoformat(v["timestamp"])
-                food_vomits.append((v["cat_name"], v_dt, vtype, v["timestamp"]))
+                food_vomits.append((v["cat_name"], datetime.fromisoformat(v["timestamp"]), vtype, v["timestamp"]))
             except ValueError:
                 pass
 
-    output = io.StringIO()
-    output.write("\ufeff")  # UTF-8 BOM für direkte Lesbarkeit in Excel
-    writer = csv.writer(output, delimiter=";")
-
+    out = io.StringIO()
+    out.write("\ufeff")  # BOM für Excel
+    w = csv.writer(out, delimiter=";")
     if lang == "en":
-        writer.writerow([
-            "Date", "Time", "Batch_ID", "Brand", "Variety",
-            "Cat", "Rating_Score", "Rating_Label", "Notes", "Food_Vomit_Within_12h"
-        ])
+        w.writerow(["Date", "Time", "Batch_ID", "Type", "Brand", "Variety", "Animal", "Rating_Score",
+                    "Rating_Label", "Notes", "Food_Vomit_Within_12h"])
     else:
-        writer.writerow([
-            "Datum", "Uhrzeit", "Batch_ID", "Hersteller", "Futtersorte",
-            "Katze", "Bewertung_Score", "Bewertung_Text", "Notiz", "Futter_Erbrochen_12h"
-        ])
-
-    for f in feedings_rows:
-        ts_str = f["timestamp"] or ""
-        date_part = ts_str[:10] if len(ts_str) >= 10 else ts_str
-        time_part = ts_str[11:16] if len(ts_str) >= 16 else ""
-
-        vomit_hit = "Nein" if lang != "en" else "No"
+        w.writerow(["Datum", "Uhrzeit", "Batch_ID", "Art", "Hersteller", "Sorte", "Tier", "Bewertung_Score",
+                    "Bewertung_Text", "Notiz", "Futter_Erbrochen_12h"])
+    names = KIND_EN if lang == "en" else KIND_DE
+    for f in feedings:
+        ts = f["timestamp"] or ""
+        hit = "No" if lang == "en" else "Nein"
         try:
-            f_dt = datetime.fromisoformat(ts_str)
+            f_dt = datetime.fromisoformat(ts)
             for v_cat, v_dt, v_type, v_ts in food_vomits:
-                if v_cat in (f["cat_name"], "Unbekannt", "Unknown"):
-                    diff_hours = (v_dt - f_dt).total_seconds() / 3600.0
-                    if 0 <= diff_hours <= 12:
-                        vomit_hit = f"{'Ja' if lang != 'en' else 'Yes'} ({v_ts[11:16]} - {_vomit_type_label(v_type, lang)})"
-                        break
+                if v_cat in (f["cat_name"], "Unbekannt", "Unknown") and 0 <= (v_dt - f_dt).total_seconds() / 3600.0 <= 12:
+                    hit = f"{'Yes' if lang == 'en' else 'Ja'} ({v_ts[11:16]} - {vomit_label(v_type, lang)})"
+                    break
         except ValueError:
             pass
-
-        writer.writerow([
-            date_part,
-            time_part,
-            f["batch_id"] or "",
-            f["manufacturer_name"],
-            f["food_name"],
-            f["cat_name"],
-            f["rating"],
-            r_labels.get(f["rating"], str(f["rating"])),
-            f["notes"] or "",
-            vomit_hit
-        ])
-
+        w.writerow([ts[:10], ts[11:16] if len(ts) >= 16 else "", f["batch_id"] or "",
+                    names.get(f["kind"] or "food", ""), f["manufacturer_name"], f["food_name"], f["cat_name"],
+                    f["rating"], r_labels.get(f["rating"], str(f["rating"])), f["notes"] or "", hit])
     filename = f"futter_export_{datetime.now().strftime('%Y-%m-%d')}.csv"
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+    return StreamingResponse(iter([out.getvalue()]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+REPORT_CSS = """
+@page{size:A4 portrait;margin:14mm}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a;background:#fff;margin:0;padding:20px;font-size:12px;line-height:1.45}
+.no-print{background:#0f172a;color:#f8fafc;padding:12px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+.btn{background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:12px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #e2e8f0;color:#1e293b}
+.meta{color:#64748b;font-size:11px;margin-bottom:14px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.kpi{border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#f8fafc}
+.kpi .label{font-size:10px;text-transform:uppercase;color:#64748b}.kpi .val{font-size:16px;font-weight:700;margin-top:2px}
+table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}
+th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-weight:600}
+.muted{color:#94a3b8;font-style:italic}.pill{display:inline-block;padding:2px 6px;border-radius:5px;font-weight:600;font-size:10px}
+.pill.good{background:#dcfce7;color:#166534}.pill.ok{background:#dbeafe;color:#1e40af}.pill.bad{background:#ffe4e6;color:#9f1239}.pill.neutral{background:#f1f5f9;color:#475569}
+@media print{body{padding:0}.no-print{display:none!important}}
+"""
 
 
 @app.get("/api/export/pdf", response_class=HTMLResponse)
-def export_pdf_report(hide_deleted: bool = False):
+def export_pdf_report(hide_deleted: bool = False, kind: str = "food", lang: Optional[str] = None):
+    kind = kind if kind in KINDS else "food"
     conn = get_db()
     s_map = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM settings").fetchall()}
-    lang = s_map.get("language", "de")
-    r_labels = {
-        3: s_map.get("rating_3", "Weggeatmet"),
-        2: s_map.get("rating_2", "Okay"),
-        1: s_map.get("rating_1", "Verweigert")
-    }
-
-    active_cats = [r["name"] for r in conn.execute("SELECT name FROM cats ORDER BY id ASC").fetchall()]
+    lang = lang if lang in ("de", "en") else s_map.get("language", "de")
+    r_labels = rating_labels()
+    top = max_score()
+    rel = relevant_keys()
+    animals = conn.execute("SELECT name, species FROM cats ORDER BY sort, id").fetchall()
+    active_cats = [a["name"] for a in animals]
+    icon = {a["name"]: ("🐶" if a["species"] == "dog" else "🐱") for a in animals}
     active_set = set(active_cats)
-
-    all_feedings = [dict(r) for r in conn.execute("SELECT * FROM feedings ORDER BY timestamp DESC, id DESC").fetchall()]
+    all_feedings = [dict(r) for r in conn.execute(
+        "SELECT * FROM feedings WHERE kind = ? ORDER BY timestamp DESC, id DESC", (kind,)).fetchall()]
     all_vomits = [dict(r) for r in conn.execute("SELECT * FROM vomits ORDER BY timestamp DESC").fetchall()]
     conn.close()
 
@@ -766,357 +909,132 @@ def export_pdf_report(hide_deleted: bool = False):
             if f["cat_name"] and f["cat_name"] not in cat_columns:
                 cat_columns.append(f["cat_name"])
 
-    # Futterrelevante Spuck-Ereignisse ermitteln (für Unverträglichkeits-Markierung)
     food_vomit_events = []
-    vomit_type_counts = {"food": 0, "bile_grass": 0, "hairball": 0, "other": 0}
     for v in all_vomits:
-        vtype = v.get("vomit_type") or "food"
-        vomit_type_counts[vtype] = vomit_type_counts.get(vtype, 0) + 1
-        if vtype in ("food", "other"):
+        if (v.get("vomit_type") or "food") in rel:
             try:
-                food_vomit_events.append((v["cat_name"], datetime.fromisoformat(v["timestamp"]), v))
+                food_vomit_events.append((v["cat_name"], datetime.fromisoformat(v["timestamp"])))
             except ValueError:
                 pass
+    rel_count = len(food_vomit_events)
 
-    # --- TEIL 1: GESAMT-AUSWERTUNG ÜBER DEN GESAMTEN ZEITRAUM ---
-    food_summary = {}
+    summary = {}
     for f in all_feedings:
         key = f"{f['manufacturer_name']} – {f['food_name']}"
-        if key not in food_summary:
-            food_summary[key] = {
-                "label": key,
-                "count": 0,
-                "sum_rating": 0,
-                "cat_scores": {},
-                "vomit_hits": 0,
-                "vomit_cats": set()
-            }
-        entry = food_summary[key]
-        entry["count"] += 1
-        entry["sum_rating"] += f["rating"]
-        c_name = f["cat_name"]
-        if c_name not in entry["cat_scores"]:
-            entry["cat_scores"][c_name] = []
-        entry["cat_scores"][c_name].append(f["rating"])
-
-        # Prüfen ob binnen 12h nach dieser Mahlzeit Futter-Erbrechen auftrat
+        e = summary.setdefault(key, {"label": key, "count": 0, "sum": 0, "cats": {}, "hits": 0, "hit_cats": set()})
+        e["count"] += 1
+        e["sum"] += f["rating"]
+        e["cats"].setdefault(f["cat_name"], []).append(f["rating"])
         try:
             f_dt = datetime.fromisoformat(f["timestamp"])
-            for v_cat, v_dt, _ in food_vomit_events:
-                if v_cat in (c_name, "Unbekannt", "Unknown"):
-                    diff_h = (v_dt - f_dt).total_seconds() / 3600.0
-                    if 0 <= diff_h <= 12:
-                        entry["vomit_hits"] += 1
-                        entry["vomit_cats"].add(c_name)
-                        break
+            for v_cat, v_dt in food_vomit_events:
+                if v_cat in (f["cat_name"], "Unbekannt", "Unknown") and 0 <= (v_dt - f_dt).total_seconds() / 3600.0 <= 12:
+                    e["hits"] += 1
+                    e["hit_cats"].add(f["cat_name"])
+                    break
         except ValueError:
             pass
+    ranked = sorted(summary.values(), key=lambda x: (x["sum"] / x["count"], x["count"]), reverse=True)
 
-    sorted_foods = sorted(
-        food_summary.values(),
-        key=lambda x: (x["sum_rating"] / x["count"] if x["count"] else 0, x["count"]),
-        reverse=True
-    )
-
-    # --- TEIL 2: LETZTE 30 TAGE FILTERN ---
-    cutoff_dt = datetime.now() - timedelta(days=30)
-    cutoff_str = cutoff_dt.strftime("%Y-%m-%dT%H:%M")
-
-    recent_vomits = [v for v in all_vomits if (v.get("timestamp") or "") >= cutoff_str]
-    recent_feedings = [f for f in all_feedings if (f.get("timestamp") or "") >= cutoff_str]
-
-    # Gruppieren der letzten 30 Tage Fütterungen nach batch_id
-    grouped_30d = []
-    batch_map = {}
+    cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M")
+    recent_vomits = [v for v in all_vomits if (v.get("timestamp") or "") >= cutoff]
+    recent_feedings = [f for f in all_feedings if (f.get("timestamp") or "") >= cutoff]
+    grouped, bmap = [], {}
     for f in recent_feedings:
-        b_key = f.get("batch_id") or f"single_{f['id']}"
-        if b_key not in batch_map:
-            grp = {
-                "timestamp": f["timestamp"],
-                "food_label": f"{f['manufacturer_name']} – {f['food_name']}",
-                "notes": f.get("notes") or "",
-                "items": []
-            }
-            batch_map[b_key] = grp
-            grouped_30d.append(grp)
-        batch_map[b_key]["items"].append((f["cat_name"], f["rating"]))
+        k = f.get("batch_id") or f"single_{f['id']}"
+        if k not in bmap:
+            bmap[k] = {"timestamp": f["timestamp"], "food": f"{f['manufacturer_name']} – {f['food_name']}",
+                       "notes": f.get("notes") or "", "items": []}
+            grouped.append(bmap[k])
+        bmap[k]["items"].append((f["cat_name"], f["rating"]))
 
-    def fmt_dt(iso_s: str) -> str:
+    def fmt_dt(s):
         try:
-            d = datetime.fromisoformat(iso_s)
-            return d.strftime("%d.%m.%Y %H:%M")
+            return datetime.fromisoformat(s).strftime("%d.%m.%Y %H:%M")
         except Exception:
-            return iso_s or ""
+            return s or ""
 
-    # HTML-Tabellenzeilen für Gesamt-Matrix bauen
-    cat_headers_html = "".join(f"<th>🐱 {html.escape(c)}</th>" for c in cat_columns)
-    matrix_rows_html = ""
-    for item in sorted_foods:
-        avg_val = item["sum_rating"] / item["count"] if item["count"] else 0
-        badge_cls = "good" if avg_val >= 2.5 else ("ok" if avg_val >= 1.8 else "bad")
-        cat_cells = ""
+    def cls(avg):
+        return "good" if avg >= top * 0.83 else ("ok" if avg >= top * 0.6 else "bad")
+
+    heads = "".join(f"<th>{icon.get(c, '🐾')} {html.escape(c)}</th>" for c in cat_columns)
+    rows = ""
+    for it in ranked:
+        avg = it["sum"] / it["count"]
+        cells = ""
         for c in cat_columns:
-            scores = item["cat_scores"].get(c, [])
-            if not scores:
-                cat_cells += "<td class='muted'>–</td>"
+            sc = it["cats"].get(c, [])
+            if not sc:
+                cells += "<td class='muted'>–</td>"
             else:
-                c_avg = sum(scores) / len(scores)
-                c_cls = "good" if c_avg >= 2.5 else ("ok" if c_avg >= 1.8 else "bad")
-                warn = " ⚠️" if c in item["vomit_cats"] else ""
-                cat_cells += f"<td><span class='pill {c_cls}'>Ø {c_avg:.1f} ({len(scores)}x){warn}</span></td>"
+                ca = sum(sc) / len(sc)
+                warn = " ⚠️" if c in it["hit_cats"] else ""
+                cells += f"<td><span class='pill {cls(ca)}'>Ø {ca:.1f} ({len(sc)}x){warn}</span></td>"
+        vc = f"<span class='pill bad'>⚠️ {it['hits']}x</span>" if it["hits"] else "<span class='muted'>0x</span>"
+        rows += (f"<tr><td><strong>{html.escape(it['label'])}</strong></td><td>{it['count']}</td>"
+                 f"<td><span class='pill {cls(avg)}'>Ø {avg:.2f} / {top:.2f}</span></td>{cells}<td>{vc}</td></tr>")
+    if not rows:
+        rows = f"<tr><td colspan='{4 + len(cat_columns)}' class='muted'>Keine Daten vorhanden.</td></tr>"
 
-        vomit_cell = (
-            f"<span class='pill bad'>⚠️ {item['vomit_hits']}x</span>"
-            if item["vomit_hits"] > 0
-            else "<span class='muted'>0x</span>"
-        )
-        matrix_rows_html += f"""
-            <tr>
-                <td><strong>{html.escape(item['label'])}</strong></td>
-                <td>{item['count']}</td>
-                <td><span class='pill {badge_cls}'>Ø {avg_val:.2f} / 3.00</span></td>
-                {cat_cells}
-                <td>{vomit_cell}</td>
-            </tr>
-        """
-
-    if not matrix_rows_html:
-        matrix_rows_html = f"<tr><td colspan='{4 + len(cat_columns)}' class='muted'>Keine Fütterungsdaten vorhanden.</td></tr>"
-
-    # HTML-Tabellenzeilen für Spuck-Ereignisse (letzte 30 Tage)
-    vomit_30d_rows = ""
+    vrows = ""
     for v in recent_vomits:
-        vtype = v.get("vomit_type") or "food"
-        is_rel = vtype in ("food", "other")
-        rel_badge = (
-            f"<span class='pill bad'>🚨 {html.escape(_vomit_type_label(vtype, lang))}</span>"
-            if is_rel
-            else f"<span class='pill neutral'>ℹ️ {html.escape(_vomit_type_label(vtype, lang))}</span>"
-        )
-        vomit_30d_rows += f"""
-            <tr>
-                <td>{fmt_dt(v.get('timestamp', ''))}</td>
-                <td><strong>{html.escape(v.get('cat_name', ''))}</strong></td>
-                <td>{rel_badge}</td>
-                <td>{html.escape(v.get('notes') or '–')}</td>
-            </tr>
-        """
-    if not vomit_30d_rows:
-        vomit_30d_rows = "<tr><td colspan='4' class='muted'>Keine Spuck-Ereignisse in den letzten 30 Tagen.</td></tr>"
+        vt = v.get("vomit_type") or "food"
+        lab = html.escape(vomit_label(vt, lang))
+        badge = f"<span class='pill bad'>🚨 {lab}</span>" if vt in rel else f"<span class='pill neutral'>ℹ️ {lab}</span>"
+        vrows += (f"<tr><td>{fmt_dt(v.get('timestamp', ''))}</td><td><strong>{html.escape(v.get('cat_name', ''))}</strong></td>"
+                  f"<td>{badge}</td><td>{html.escape(v.get('notes') or '–')}</td></tr>")
+    if not vrows:
+        vrows = "<tr><td colspan='4' class='muted'>Keine Spuck-Ereignisse in den letzten 30 Tagen.</td></tr>"
 
-    # HTML-Tabellenzeilen für Fütterungen (letzte 30 Tage)
-    feed_30d_rows = ""
-    for g in grouped_30d:
-        ratings_str = ", ".join(
-            f"<strong>{html.escape(c)}:</strong> {html.escape(r_labels.get(r, str(r)))} ({r})"
-            for c, r in g["items"]
-        )
-        feed_30d_rows += f"""
-            <tr>
-                <td style="white-space:nowrap;">{fmt_dt(g['timestamp'])}</td>
-                <td><strong>{html.escape(g['food_label'])}</strong></td>
-                <td>{ratings_str}</td>
-                <td>{html.escape(g['notes'] or '–')}</td>
-            </tr>
-        """
-    if not feed_30d_rows:
-        feed_30d_rows = "<tr><td colspan='4' class='muted'>Keine Fütterungen in den letzten 30 Tagen.</td></tr>"
+    frows = ""
+    for g in grouped:
+        rs = ", ".join(f"<strong>{html.escape(c)}:</strong> {html.escape(r_labels.get(r, str(r)))} ({r})" for c, r in g["items"])
+        frows += (f"<tr><td style='white-space:nowrap'>{fmt_dt(g['timestamp'])}</td><td><strong>{html.escape(g['food'])}</strong></td>"
+                  f"<td>{rs}</td><td>{html.escape(g['notes'] or '–')}</td></tr>")
+    if not frows:
+        frows = "<tr><td colspan='4' class='muted'>Keine Einträge in den letzten 30 Tagen.</td></tr>"
 
-    total_meals_all = len(all_feedings)
-    overall_avg = f"{(sum(f['rating'] for f in all_feedings) / total_meals_all):.2f}" if total_meals_all else "–"
+    total = len(all_feedings)
+    overall = f"{sum(f['rating'] for f in all_feedings) / total:.2f}" if total else "–"
     now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+    scale = ", ".join(f"{s} = {html.escape(l)}" for s, l in sorted(r_labels.items(), reverse=True))
+    title = KIND_DE[kind]
 
-    html_doc = f"""<!DOCTYPE html>
-<html lang="{lang}">
-<head>
-    <meta charset="UTF-8">
-    <title>Futter – Auswertungs- & Tierarztbericht ({now_str})</title>
-    <style>
-        @page {{ size: A4 portrait; margin: 14mm; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: #0f172a;
-            background: #ffffff;
-            margin: 0;
-            padding: 20px;
-            font-size: 12px;
-            line-height: 1.45;
-        }}
-        .no-print {{
-            background: #0f172a;
-            color: #f8fafc;
-            padding: 12px 18px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }}
-        .btn {{
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 12px;
-        }}
-        h1 {{ font-size: 20px; margin: 0 0 4px 0; }}
-        h2 {{
-            font-size: 14px;
-            margin: 22px 0 8px 0;
-            padding-bottom: 4px;
-            border-bottom: 2px solid #e2e8f0;
-            color: #1e293b;
-        }}
-        .meta {{ color: #64748b; font-size: 11px; margin-bottom: 14px; }}
-        .kpi-grid {{
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 18px;
-        }}
-        .kpi {{
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            padding: 10px;
-            background: #f8fafc;
-        }}
-        .kpi .label {{ font-size: 10px; text-transform: uppercase; color: #64748b; }}
-        .kpi .val {{ font-size: 16px; font-weight: 700; margin-top: 2px; }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 16px;
-            font-size: 11px;
-        }}
-        th, td {{
-            border: 1px solid #cbd5e1;
-            padding: 6px 8px;
-            text-align: left;
-            vertical-align: top;
-        }}
-        th {{ background: #f1f5f9; font-weight: 600; }}
-        .muted {{ color: #94a3b8; font-style: italic; }}
-        .pill {{
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 5px;
-            font-weight: 600;
-            font-size: 10px;
-        }}
-        .pill.good {{ background: #dcfce7; color: #166534; }}
-        .pill.ok {{ background: #dbeafe; color: #1e40af; }}
-        .pill.bad {{ background: #ffe4e6; color: #9f1239; }}
-        .pill.neutral {{ background: #f1f5f9; color: #475569; }}
-        @media print {{
-            body {{ padding: 0; }}
-            .no-print {{ display: none !important; }}
-        }}
-    </style>
-</head>
-<body>
-    <div class="no-print">
-        <div>
-            <strong>🐾 Futter – Druck- & PDF-Ansicht</strong>
-            <span style="margin-left:10px; color:#94a3b8;">Wähle im Druckdialog „Als PDF speichern“.</span>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <button class="btn" onclick="window.print()">🖨️ Als PDF speichern / Drucken</button>
-            <button class="btn" style="background:#475569;" onclick="window.close()">Schließen</button>
-        </div>
-    </div>
-
-    <h1>🐾 Futter – Gesamt-Auswertung & 30-Tage-Bericht</h1>
-    <div class="meta">
-        Erstellt am: {now_str} Uhr | Aktive Katzen: {", ".join(active_cats) if active_cats else "–"} |
-        Bewertungs-Skala: 3 = {html.escape(r_labels[3])}, 2 = {html.escape(r_labels[2])}, 1 = {html.escape(r_labels[1])}
-    </div>
-
-    <div class="kpi-grid">
-        <div class="kpi">
-            <div class="label">Gesamte Katzen-Mahlzeiten</div>
-            <div class="val">{total_meals_all}</div>
-        </div>
-        <div class="kpi">
-            <div class="label">Ø Akzeptanz (Gesamt)</div>
-            <div class="val">{overall_avg} / 3.00</div>
-        </div>
-        <div class="kpi">
-            <div class="label">Spuck-Vorfälle (Gesamt)</div>
-            <div class="val">{len(all_vomits)} (davon {vomit_type_counts.get('food', 0)}x Futter)</div>
-        </div>
-        <div class="kpi">
-            <div class="label">Einträge letzte 30 Tage</div>
-            <div class="val">{len(grouped_30d)} Runden / {len(recent_vomits)}x Spucken</div>
-        </div>
-    </div>
-
-    <h2>1. Generelle Futter-Auswertung & Akzeptanz-Matrix (Gesamter Zeitraum)</h2>
-    <p class="meta">
-        Zeigt für jede Futtersorte die durchschnittliche Bewertung pro Katze über den gesamten Zeitraum.
-        <strong>⚠️ Futter-Spucken (12h)</strong> zählt ausschließlich futterrelevante Spuck-Ereignisse (ohne Haarballen oder Galle/Gras).
-    </p>
-    <table>
-        <thead>
-            <tr>
-                <th>Hersteller & Futtersorte</th>
-                <th>Portionen</th>
-                <th>Ø Gesamt</th>
-                {cat_headers_html}
-                <th>Futter-Spucken (12h)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {matrix_rows_html}
-        </tbody>
-    </table>
-
-    <h2>2. Spuck-Ereignisse der letzten 30 Tage</h2>
-    <table>
-        <thead>
-            <tr>
-                <th style="width:130px;">Zeitpunkt</th>
-                <th style="width:120px;">Katze</th>
-                <th style="width:190px;">Art / Kategorie</th>
-                <th>Notiz / Details</th>
-            </tr>
-        </thead>
-        <tbody>
-            {vomit_30d_rows}
-        </tbody>
-    </table>
-
-    <h2>3. Chronologische Fütterungen der letzten 30 Tage (Gruppiert nach Mahlzeit)</h2>
-    <table>
-        <thead>
-            <tr>
-                <th style="width:130px;">Zeitpunkt</th>
-                <th style="width:220px;">Hersteller & Sorte</th>
-                <th>Katzen & Einzelbewertung</th>
-                <th style="width:160px;">Notiz</th>
-            </tr>
-        </thead>
-        <tbody>
-            {feed_30d_rows}
-        </tbody>
-    </table>
-
-    <script>
-        window.addEventListener('load', () => {{
-            setTimeout(() => window.print(), 350);
-        }});
-    </script>
-</body>
-</html>"""
-    return HTMLResponse(content=html_doc)
+    doc = f"""<!DOCTYPE html><html lang="{lang}"><head><meta charset="UTF-8">
+<title>Futter – Bericht {title} ({now_str})</title><style>{REPORT_CSS}</style></head><body>
+<div class="no-print"><div><strong>🐾 Futter – Druck- &amp; PDF-Ansicht</strong>
+<span style="margin-left:10px;color:#94a3b8">Wähle im Druckdialog „Als PDF speichern“.</span></div>
+<div style="display:flex;gap:8px"><button class="btn" onclick="window.print()">🖨️ Als PDF speichern / Drucken</button>
+<button class="btn" style="background:#475569" onclick="window.close()">Schließen</button></div></div>
+<h1>🐾 Futter – Gesamt-Auswertung &amp; 30-Tage-Bericht ({title})</h1>
+<div class="meta">Erstellt am: {now_str} Uhr | Tiere: {html.escape(", ".join(active_cats)) if active_cats else "–"} | Bewertungs-Skala: {scale}</div>
+<div class="kpi-grid">
+<div class="kpi"><div class="label">Einträge gesamt</div><div class="val">{total}</div></div>
+<div class="kpi"><div class="label">Ø Akzeptanz (Gesamt)</div><div class="val">{overall} / {top:.2f}</div></div>
+<div class="kpi"><div class="label">Spuck-Vorfälle (Gesamt)</div><div class="val">{len(all_vomits)} (davon {rel_count}x futterrelevant)</div></div>
+<div class="kpi"><div class="label">Letzte 30 Tage</div><div class="val">{len(grouped)} Runden / {len(recent_vomits)}x Spucken</div></div></div>
+<h2>1. Akzeptanz-Matrix (gesamter Zeitraum)</h2>
+<p class="meta">Durchschnittliche Bewertung je Sorte und Tier. <strong>⚠️ Spucken (12h)</strong> zählt nur futterrelevante Spuck-Ereignisse.</p>
+<table><thead><tr><th>Hersteller &amp; Sorte</th><th>Portionen</th><th>Ø Gesamt</th>{heads}<th>Spucken (12h)</th></tr></thead><tbody>{rows}</tbody></table>
+<h2>2. Spuck-Ereignisse der letzten 30 Tage</h2>
+<table><thead><tr><th style="width:130px">Zeitpunkt</th><th style="width:120px">Tier</th><th style="width:190px">Kategorie</th><th>Notiz</th></tr></thead><tbody>{vrows}</tbody></table>
+<h2>3. Einträge der letzten 30 Tage (gruppiert nach Runde)</h2>
+<table><thead><tr><th style="width:130px">Zeitpunkt</th><th style="width:220px">Hersteller &amp; Sorte</th><th>Tiere &amp; Bewertung</th><th style="width:160px">Notiz</th></tr></thead><tbody>{frows}</tbody></table>
+<script>window.addEventListener('load',()=>{{setTimeout(()=>window.print(),350)}});</script></body></html>"""
+    return HTMLResponse(content=doc)
 
 
-# --- STATISCHE DATEIEN & FRONTEND ---
+# ======================= STATISCHE DATEIEN & FRONTEND =======================
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/sw.js")
+def service_worker():
+    # Service Worker muss im Root-Scope liegen, damit er die ganze App abdecken darf
+    return FileResponse(os.path.join(STATIC_DIR, "sw.js"), media_type="text/javascript",
+                        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
 
 
 @app.get("/")

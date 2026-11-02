@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Abhängigkeiten installieren (inkl. python-multipart für Datei-Uploads)
 COPY requirements.txt* ./
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic python-multipart
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic python-multipart pywebpush
 
 # Anwendungsdaten kopieren
 COPY ./app /app/app
@@ -14,4 +14,5 @@ RUN mkdir -p /app/data/uploads /app/app/static
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+#CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
