@@ -101,7 +101,7 @@ The easiest way to run the tracker is the prebuilt image from the GitHub Contain
 2. **Start the container:**
 
    ```bash
-   docker compose up -d --build
+   docker compose up -d
    ```
 
 3. **Health check:**
@@ -244,9 +244,13 @@ Database changes between versions are applied automatically on startup.
 
 ```bash
 docker compose pull
+docker compose up -d
+```
+Or in case of building it:
+```bash
+docker compose pull
 docker compose up -d --build
 ```
-
 Your data in `./data` is preserved.
 
 ---
