@@ -87,7 +87,7 @@ The easiest way to run the tracker is the prebuilt image from the GitHub Contain
    ```yaml
    services:
      cat-food-tracker:
-       image: ghcr.io/s0u7m4ch1n3/cat-food-tracker:latest
+       image: ghcr.io/grosserlacher/cat-food-tracker:latest
        container_name: cat-food-tracker
        restart: unless-stopped
        ports:
@@ -101,7 +101,7 @@ The easiest way to run the tracker is the prebuilt image from the GitHub Contain
 2. **Start the container:**
 
    ```bash
-   docker compose up -d
+   docker compose up -d --build
    ```
 
 3. **Health check:**
