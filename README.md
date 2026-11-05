@@ -244,7 +244,7 @@ Database changes between versions are applied automatically on startup.
 
 ```bash
 docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 Your data in `./data` is preserved.
