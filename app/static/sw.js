@@ -4,10 +4,10 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) {}
-  e.waitUntil(self.registration.showNotification(d.title || 'Futter', {
+  e.waitUntil(self.registration.showNotification(d.title || d.app || '', {
     body: d.body || '',
-    icon: '/static/icon-192.png',
-    badge: '/static/icon-192.png',
+    icon: '/static/icon-192-v2.png',
+    badge: '/static/icon-192-v2.png',
     tag: d.tag || 'feeding-reminder',
     data: { url: d.url || '/' }
   }));

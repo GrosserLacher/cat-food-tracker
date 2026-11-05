@@ -195,6 +195,7 @@ def animal_meta(aid: int, data: AnimalMeta):
 class AnimalNew(BaseModel):
     name: str
     species: str = "cat"
+    birthday: Optional[str] = None     # YYYY-MM-DD, optional
 
 
 @router.post("/animals")
@@ -202,16 +203,22 @@ def animal_create(data: AnimalNew):
     name = data.name.strip()
     if not name or data.species not in SPECIES:
         raise HTTPException(status_code=400, detail="Name oder Tierart ungueltig")
+    try:
+        from app.health import clean_birthday
+    except ImportError:  # Start ohne Paketstruktur
+        from health import clean_birthday
+    birthday = clean_birthday(data.birthday)
     conn = _db()
     try:
         pos = conn.execute("SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM cats").fetchone()["n"]
-        cur = conn.execute("INSERT INTO cats (name, species, sort) VALUES (?, ?, ?)", (name, data.species, pos))
+        cur = conn.execute("INSERT INTO cats (name, species, sort, birthday) VALUES (?, ?, ?, ?)",
+                           (name, data.species, pos, birthday))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
         raise HTTPException(status_code=400, detail="Ein Tier mit diesem Namen existiert bereits")
     conn.close()
-    return {"id": cur.lastrowid, "name": name, "species": data.species}
+    return {"id": cur.lastrowid, "name": name, "species": data.species, "birthday": birthday}
 
 
 # --- Kataloge: Futter, Snacks, Getraenke ---------------------------------------

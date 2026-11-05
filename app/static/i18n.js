@@ -223,6 +223,27 @@ window.I18N = {
     '“ wird ausgeblendet. Bereits erfasste Werte bleiben gespeichert.': '” will be hidden. Values already recorded are kept.',
     'Größe': 'Height', 'Gewicht': 'Weight', 'Temperatur': 'Temperature',
 
+    /* Bericht-Reiter, Geburtstag in den Stammdaten, Test-Nachrichten */
+    'Bericht': 'Report', 'Bericht zusammenstellen': 'Compose report', 'Bericht erstellen': 'Create report',
+    'Wähle Kategorien, Tiere und Zeitraum. Der Bericht öffnet sich als druckfertige Seite („Als PDF speichern“). Das Alter eines Tieres steht einmal im Tierkopf (Stand: heute).': 'Choose categories, animals and period. The report opens as a print-ready page (“Save as PDF”). An animal’s age appears once in its header (as of today).',
+    'Kategorien': 'Categories', 'Tiere': 'Animals', 'Zeitraum': 'Period', 'Eigener Zeitraum': 'Custom period',
+    'Von': 'From', 'Bis': 'To', 'Letzte': 'Last', 'Tage': 'days',
+    'Bitte mindestens eine Kategorie wählen': 'Please choose at least one category',
+    'Bitte mindestens ein Tier wählen': 'Please choose at least one animal',
+    'Bitte einen gültigen Zeitraum wählen': 'Please choose a valid period',
+    'Geburtstag (optional)': 'Birthday (optional)',
+    'Der Geburtstag wird in den Stammdaten geändert.': 'The birthday is changed in the master data.',
+    'Test: Futter': 'Test: feeding', 'Test: Geburtstag': 'Test: birthday',
+    'Geburtstags-Nachrichten gesendet': 'Birthday messages sent',
+    'Dazu kommen Geburtstags-Nachrichten: zwei Wochen vorher und am Geburtstag um 09:00 Uhr.': 'Birthday messages are added: two weeks ahead and on the birthday at 09:00.',
+
+    /* Datensicherung, Bericht-Schieber */
+    'Datensicherung': 'Backup', 'Datenbank sichern': 'Back up database',
+    'Lädt eine vollständige Sicherung der Datenbank (.db) herunter: Tiere, Einträge, Gesundheitsdaten, Einstellungen und Benutzerkonten. Hochgeladene Fotos liegen im Ordner data/uploads und werden separat gesichert.': 'Downloads a complete backup of the database (.db): animals, entries, health data, settings and user accounts. Uploaded photos are in the data/uploads folder and are backed up separately.',
+    'Die Datensicherung ist nur für Administratoren verfügbar.': 'The backup is only available to administrators.',
+    'Zeitlich gemischt': 'Mixed chronologically',
+    'Aus: Kategorien getrennt. An: alle Einträge eines Tieres in zeitlicher Abfolge (Gesundheit bleibt oben).': 'Off: categories separated. On: all entries of an animal in chronological order (health stays on top).',
+
     /* Erinnerungen (Push) */
     'Erinnerungen': 'Reminders', 'Erinnerungen aktivieren': 'Enable reminders', 'Testnachricht senden': 'Send test message',
     'Deaktivieren': 'Disable', 'Erinnerungen aktiviert': 'Reminders enabled', 'Erinnerungen deaktiviert': 'Reminders disabled',

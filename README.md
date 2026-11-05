@@ -46,6 +46,10 @@ A self-hosted, mobile-first web tracker (PWA) for seamless documentation and ana
 - **🌍 Bilingual:** German and English interface, selectable on first start and in the settings.
 - **🏷️ Custom Rating Labels:** Rename the three acceptance levels to whatever suits you (defaults: *Inhaled / Okay / Refused*).
 - **📤 Export:** Full CSV export plus a printable report (save it as PDF) with an all-time food matrix per cat and the last 30 days of vomiting incidents and meals.
+- **🏷️ Renamable:** Set `APP_NAME` at the top of `app/main.py` (or as environment variable) – used for the browser tab, home-screen name, reports and push messages.
+- **🩺 Health data & birthdays:** Per-animal health values (height, weight, temperature, custom fields). The birthday is asked when adding an animal and can only be edited in the master data.
+- **🔔 Push reminders:** Feeding reminders plus birthday messages (14 days ahead and on the birthday at 09:00 local time, with varying texts).
+- **📑 Custom report:** Multi-select categories (food, snacks, drinks, vomiting, health), animals and period (default 30 days). Each animal's age is shown once (as of export day).
 - **🕒 Automatic Timestamps:** Date and time are recorded for every entry.
 - **📱 PWA (Progressive Web App):** Installs seamlessly on your smartphone's home screen and feels like a native app.
 - **🔒 Local Data Sovereignty:** Runs entirely self-hosted in a single Docker container, with no cloud involved.
@@ -196,6 +200,7 @@ Most settings are made in the app itself:
 | Setting          | Where            | Default                          |
 |------------------|------------------|----------------------------------|
 | Language         | Settings         | `de` (chosen on first start)     |
+| App name         | `APP_NAME` in `app/main.py` or env var | `PurrfectHealth` |
 | Rating labels    | Settings         | Inhaled / Okay / Refused         |
 
 Container options:
@@ -228,6 +233,8 @@ docker compose start
 ```
 
 **Restore:** Put the backed-up `data` folder back in place and restart the container.
+
+**Backup from the app:** *Overview → Export → Back up database* downloads a consistent copy of the SQLite database (`.db`, administrators only; includes user accounts). To restore it, stop the container, replace `data/tracker.db` with the downloaded file and start again. Photos in `data/uploads/` must be backed up separately.
 
 Database changes between versions are applied automatically on startup.
 
@@ -268,7 +275,9 @@ The app is built on a REST API. Interactive documentation (Swagger UI) is availa
 | Foods          | `GET/POST /api/foods`, `PUT/DELETE /api/foods/{id}`            |
 | Feedings       | `GET/POST /api/feedings`, `PUT/DELETE /api/feedings/batch/{batch_id}` |
 | Vomits         | `GET/POST /api/vomits`, `DELETE /api/vomits/{id}`              |
-| Export         | `GET /api/export/csv`, `GET /api/export/pdf`                   |
+| Export         | `GET /api/export/csv`, `GET /api/export/pdf`, `GET /api/export/report` (`kinds`, `animals`, `unknown`, `days` or `date_from`/`date_to`, `lang`) |
+| Health         | `/api/health/*` (overview, birthday, fields, values)           |
+| Push           | `/api/push/*` (status, subscribe, test, `?kind=birthday`)      |
 
 ---
 
@@ -296,7 +305,8 @@ Then open `http://localhost:8000`.
 ```text
 cat-food-tracker/
 ├── app/
-│   ├── main.py          # FastAPI app: API, database setup, exports
+│   ├── main.py          # FastAPI app (APP_NAME at the top), API, exports
+│   ├── extras.py, health.py, push.py, report.py
 │   └── static/          # Frontend (index.html, PWA assets)
 ├── data/                # Created at runtime
 │   ├── tracker.db       # SQLite database

@@ -2,15 +2,19 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<link rel="manifest" href="/static/manifest.json">
+<link rel="manifest" href="/static/manifest.json?v=neu">
 <meta name="theme-color" content="#3b82f6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Futter">
-<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="apple-mobile-web-app-title" content="{{APP_NAME}}">
+<link rel="apple-touch-icon" href="/static/icon-192-v2.png">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=2">
+<link rel="shortcut icon" href="/favicon.ico">
+<!--APP_CONFIG-->
 <script src="/static/i18n.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cat Food Tracker</title>
+<title>{{APP_NAME}}</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#fff6ec;--card:#fff;--ink:#3a2a26;--mut:#8a766d;--line:#f1dfd0;--acc:#ff7a45;--accs:#ffe6d6;--good:#1f9d62;--goods:#d9f5e6;--ok:#3a7bd5;--oks:#dde9fb;--bad:#e0483f;--bads:#ffe0dc;--g1:#ffc79c;--g2:#ff9fb8;--sl:90%;--sh:rgba(120,70,40,.13);color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -203,7 +207,7 @@ const hm=t=>new Date(t).toLocaleTimeString(LOCALE(),{hour:'2-digit',minute:'2-di
 const fmt=t=>{const d=new Date(t),n=new Date(),dd=Math.round((new Date(n.getFullYear(),n.getMonth(),n.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);return(dd==0?'Heute':dd==1?'Gestern':d.toLocaleDateString(LOCALE(),{day:'2-digit',month:'2-digit'}))+', '+hm(t)};
 const toast=m=>{const t=$('#toast');t.innerHTML=`<span>${esc(m)}</span><button class="tx" data-a="tclose" aria-label="Schließen">✕</button>`;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),5000)};
 const burst=(x,y)=>{for(let i=0;i<8;i++){const s=document.createElement('span');s.className='bu';s.textContent=['🐾','⭐','💖','🐟'][i%4];s.style.cssText=`left:${x}px;top:${y}px;--dx:${(Math.random()-.5)*180}px;--dy:${-60-Math.random()*100}px`;document.body.append(s);setTimeout(()=>s.remove(),900)}};
-const cchip=(c,on,a)=>`<button class="chip cat ${on?'on':''}" style="${cst(c)}" data-a="${a}" data-v="${esc(c.name)}"><i class="ini">${esc(c.name[0])}</i>${esc(c.name)}</button>`;
+const cchip=(c,on,a)=>`<button class="chip cat ${on?'on':''}" style="${cst(c)}" data-a="${a}" data-v="${esc(c.name)}"><i class="ini">${esc(c.name[0])}</i><span class="cn">${esc(c.name)}</span></button>`;
 const lines=l=>l.map(b=>`• ${hm(b.ts)} ${esc(b.food)}`).join('<br>');
 
 const vFeed=()=>{const m=M[S.man]||{f:[]},ks=Object.keys(S.sel);if(!CATS.length)return'<div class="card"><h2>🧸 Noch leer</h2><p>Lege unter <b>Einstellungen → Stammdaten</b> mindestens ein Tier an.</p></div>';return`
@@ -242,8 +246,10 @@ const vStats=()=>{const Q=rank(),n=Q.reduce((a,x)=>a+x.n,0),avg=n?Q.reduce((a,x)
 
 const vData=()=>`
 <div class="card"><h2>🐱 Katzen · ${CATS.length}</h2>
-${CATS.map(c=>`<div class="ed"><button class="av avb" data-a="sp" data-i="${c.id}" style="${cst(c)}" title="Tierart wechseln (Katze/Hund)">${esc(c.name[0])}</button><input type="text" data-e="cat" data-i="${c.id}" value="${esc(c.name)}"><input type="color" class="cpick" value="${ccol(c)}" data-ccol="${c.id}" title="Farbe des Avatars"><button class="mv" data-a="mvu" data-i="${c.id}" aria-label="Nach oben">▲</button><button class="mv" data-a="mvd" data-i="${c.id}" aria-label="Nach unten">▼</button><button class="x" data-a="delCat" data-i="${c.id}">🗑️</button></div>`).join('')}
-<div class="ed"><span class="av">+</span><input type="text" id="ncat" placeholder="Neues Tier …"><button class="btn sm" data-a="addCat">Katze</button><button class="btn sm gh" data-a="addDog">Hund</button></div>
+${CATS.map(c=>`<div class="pet"><div class="ed"><button class="av avb" data-a="sp" data-i="${c.id}" style="${cst(c)}" title="Tierart wechseln (Katze/Hund)">${esc(c.name[0])}</button><input type="text" data-e="cat" data-i="${c.id}" value="${esc(c.name)}"></div>
+<div class="ed tools"><label class="bd"><span class="mut">Geburtstag</span><input type="date" data-e="bday" data-i="${c.id}" value="${HF.birthdays[c.id]||''}" max="${nowIso().slice(0,10)}"></label><input type="color" class="cpick" value="${ccol(c)}" data-ccol="${c.id}" title="Farbe des Avatars"><button class="mv" data-a="mvu" data-i="${c.id}" aria-label="Nach oben">▲</button><button class="mv" data-a="mvd" data-i="${c.id}" aria-label="Nach unten">▼</button><button class="x" data-a="delCat" data-i="${c.id}">🗑️</button></div></div>`).join('')}
+<div class="pet"><div class="ed"><span class="av">+</span><input type="text" id="ncat" placeholder="Neues Tier …"></div>
+<div class="ed tools"><label class="bd"><span class="mut">Geburtstag (optional)</span><input type="date" id="nbday" max="${nowIso().slice(0,10)}"></label><button class="btn sm" data-a="addCat">Katze</button><button class="btn sm gh" data-a="addDog">Hund</button></div></div>
 <p class="mut" style="margin:0">Tippe auf den Avatar, um zwischen Katze und Hund zu wechseln. Mit ▲▼ änderst du die Reihenfolge – sie gilt überall. Umbenennen ändert auch die Historie, Löschen entfernt nur aus der Auswahl.</p></div>
 <div class="card"><h2>🏷️ Hersteller & Sorten</h2>
 ${M.map((m,i)=>`<div class="man"><div class="ed"><input type="text" class="b" data-e="man" data-i="${i}" value="${esc(m.n)}"><button class="x" data-a="delMan" data-i="${i}">🗑️</button></div>
@@ -281,9 +287,9 @@ ${CK.map(([k,l])=>`<label class="cp"><span>${l}</span><input type="color" data-c
 <div class="card"><h2>Header-Tier</h2><p class="mut" style="margin-top:0">Wähle ein oder mehrere Tiere. Beim Öffnen wechselt die App zufällig zwischen ihnen.</p>${artChips()}${hdr()[1]=='none'?'':`<div class="row" style="margin-top:14px;justify-content:space-between">${[['sleepy','Morgens'],['wake','Tagsüber'],['happy','Abends'],['sleep','Nachts']].map(([s,l])=>`<div class="cpvw"><div class="cpv" data-s="${s}"></div>${l}</div>`).join('')}</div>`}</div>
 <button class="btn gh" data-a="dreset">Design zurücksetzen</button>`};
 function render(){const h=new Date().getHours();const gr=greet();$('#hi').textContent=gr[0];$('#sub').textContent=gr[1];$('#hav').innerHTML=CATS.map(c=>`<span class="av" style="${cst(c)}" title="${esc(c.name)}">${esc(c.name[0])}</span>`).join('');
-const a=$('#app');a.innerHTML={feed:vFeed,vomit:vVomit,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
+const a=$('#app');a.innerHTML={feed:vFeed,vomit:vVomit,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,report:vReport,account:()=>'',health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
 post();if(S.in){a.classList.add('in');setTimeout(()=>a.classList.remove('in'),600);S.in=0}
-$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Spucken'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&S.tab=='design')||(k=='hist'&&(S.tab=='stats'||S.tab=='export'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
+$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Spucken'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&(S.tab=='design'||S.tab=='account'))||(k=='hist'&&(S.tab=='stats'||S.tab=='export'||S.tab=='report'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
 
 const val=s=>{const e=$(s);return e?e.value.trim():''};
 const ren=(o,n)=>{B.forEach(b=>{if(o in b.cats){b.cats[n]=b.cats[o];delete b.cats[o]}});V.forEach(v=>{if(v.cat==o)v.cat=n});if(o in S.sel){S.sel[n]=S.sel[o];delete S.sel[o]}if(S.vcat==o)S.vcat=n;if(S.sc==o)S.sc=n};
@@ -331,7 +337,7 @@ const selAll=()=>S.pr.autoAll?Object.fromEntries(CATS.map(c=>[c.name,NR()])):{};
 const mvA=(id,dx)=>{const i=CATS.findIndex(c=>c.id==id),j=i+dx;if(j<0||j>=CATS.length)return;[CATS[i],CATS[j]]=[CATS[j],CATS[i]]};
 const grp=()=>{const ca=CATS.filter(c=>c.sp!='dog'),dg=CATS.filter(c=>c.sp=='dog'),b=(k,l,n)=>`<button class="chip" data-a="grp" data-v="${k}" style="padding:6px 12px">${l} (${n})</button>`;if(CATS.length<2)return'';return`<div class="row" style="margin-top:12px">${b('all','Alle',CATS.length)}${ca.length&&dg.length?(ca.length>1?b('cat','Alle Katzen',ca.length):'')+(dg.length>1?b('dog','Alle Hunde',dg.length):''):''}</div>`};
 const PRO=()=>`<div class="card"><h2>Eigenschaften</h2><div class="cp"><span>Alle Tiere beim Füttern vorauswählen</span><label class="sw"><input type="checkbox" data-e="pall" ${S.pr.autoAll?'checked':''}><i></i></label></div><div class="cp"><span>Standardgetränk</span><select data-e="pdrink">${CAT.drink.flatMap(m=>m.f).map(f=>`<option ${f==S.pr.drink?'selected':''}>${esc(f)}</option>`).join('')}</select></div></div>`;
-const vExport=()=>`<div class="card"><h2>Export</h2><p class="mut" style="margin-top:0">Alle Daten als CSV oder als druckfertiger Bericht (PDF) der letzten 30 Tage, aufgeschlüsselt nach Tier.</p><div class="grid2"><button class="btn gh" data-a="expCsv">CSV exportieren</button><button class="btn gh" data-a="expPdf">PDF-Bericht</button></div></div>`;
+const vExport=()=>`<div class="card"><h2>Datensicherung</h2><p class="mut" style="margin-top:0">Lädt eine vollständige Sicherung der Datenbank (.db) herunter: Tiere, Einträge, Gesundheitsdaten, Einstellungen und Benutzerkonten. Hochgeladene Fotos liegen im Ordner data/uploads und werden separat gesichert.</p>${ME&&ME.is_admin?'<div class="grid2"><button class="btn" data-a="dbdump">Datenbank sichern</button><button class="btn gh" data-a="expCsv">CSV exportieren</button></div>':'<p class="mut" style="margin:0">Die Datensicherung ist nur für Administratoren verfügbar.</p>'}</div>`;
 const hdr=()=>{const s=(CU.hs&&CU.hs.length?CU.hs:[CU.cat||0]).filter(i=>ART[i]),l=s.length?s:[0];if(!l.includes(HI))HI=l[Math.random()*l.length|0];return ART[HI]};
 function post2(a){const hd=t=>[...a.querySelectorAll('h2')].find(h=>h.textContent.startsWith(t));
 if(S.tab=='feed'){const h=hd('Welches Futter');if(h)h.textContent=S.kind=='snack'?'Welcher Snack?':S.kind=='drink'?'Welches Getränk?':'Welches Futter?';a.insertAdjacentHTML('afterbegin',KC()+(S.kind=='drink'?`<div class="card"><div class="top"><div><b>Standardgetränk: ${esc(S.pr.drink)}</b><div class="mut">Immer verfügbar – ein Tipp trägt es für die gewählten Tiere ein.</div></div><button class="btn sm" data-a="stdDrink">Geben</button></div></div>`:''))}
@@ -360,7 +366,7 @@ const EYE={h:`<path d='M38 52q5-7 11 0M71 52q5-7 11 0' fill='none' stroke='#5a3a
 const STR=c=>`<path d='M52 20v10M60 18v11M68 20v10' stroke='${c}' stroke-width='3' stroke-linecap='round'/>`;
 const mkCat=(fur,ear,eye,nose='#d9674a',ink='#5a3a2e')=>`url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 90'><path d='M20 90V46C20 34 24 24 30 18L28 4L46 14C54 12 66 12 74 14L92 4L90 18C96 24 100 34 100 46V90Z' fill='${fur}'/><path d='M33 14l1 6-5 3zM87 14l-1 6 5 3z' fill='${ear}'/>${eye}<path d='M55 61h10l-5 6z' fill='${nose}'/><path d='M60 67q-3 5-9 3M60 67q3 5 9 3' fill='none' stroke='${ink}' stroke-width='2.4' stroke-linecap='round'/><path d='M22 58l-14-3M22 64l-14 3M98 58l14-3M98 64l14 3' stroke='${ink}' stroke-width='1.8' stroke-linecap='round'/></svg>`)}")`;
 const ARTS=[['Cremefarben',mkCat('#fff1e4','#f3b9a6',EYE.h)],['Schwarz',mkCat('#2b2b33','#6a5560',EYE.o,'#e58a8a','#cfc6cf')],['Grau getigert',mkCat('#b7bcc6','#e8b5b5',EYE.o+STR('#8a909c'),'#e58a8a')],['Orange',mkCat('#f2a65a','#f7c9a0',EYE.h+STR('#d98338'))],['Schlafend',mkCat('#fff1e4','#f3b9a6',EYE.s)],['Grau mit weißer Schnauze',mkCat('#8d939d','#e3b4b8',EYE.o+`<path d='M54 51h12l4 11H50z' fill='#fff'/><ellipse cx='60' cy='66' rx='15' ry='10' fill='#fff'/>`,'#e58a8a','#5b5f68')],['Snow Lynx',mkCat('#f7f0e6','#d6b48f',OE('#5aa9e6')+STR('#b8926d')+`<path d='M30 56l8 2M30 62l8-1M90 56l-8 2M90 62l-8-1' stroke='#b8926d' stroke-width='2.4' stroke-linecap='round'/>`,'#e9a0a0','#7a5a42')],['Spotted Tabby (Braun)',mkCat('#9a6a3f','#e7b9a0',EYE.o+`<ellipse cx='60' cy='66' rx='14' ry='9' fill='#e4c7a3'/><g fill='#5b3a22'><circle cx='46' cy='30' r='2.8'/><circle cx='60' cy='25' r='2.8'/><circle cx='74' cy='30' r='2.8'/><circle cx='30' cy='46' r='2.6'/><circle cx='90' cy='46' r='2.6'/><circle cx='32' cy='66' r='2.6'/><circle cx='88' cy='66' r='2.6'/><circle cx='38' cy='76' r='2.6'/><circle cx='82' cy='76' r='2.6'/></g>`,'#c0705a','#4a2e1b')],['Keine','none']];
-function post(){const a=$('#app');post2(a);a.querySelectorAll('.cpv').forEach(e=>{const R0=hdr()[1];if(R0!='none')e.style.backgroundImage=R0[e.dataset.s]});const SUB=S.tab=='data'||S.tab=='design'?[['data','Stammdaten'],['design','Design']]:['hist','stats','export'].includes(S.tab)?[['hist','Verlauf'],['stats','Auswertung'],['export','Export']]:null;if(SUB)a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:14px">${SUB.map(([k,l])=>`<button class="chip ${S.tab==k?'on':''}" data-a="tab" data-v="${k}">${l}</button>`).join('')}</div>`);
+function post(){const a=$('#app');post2(a);a.querySelectorAll('.cpv').forEach(e=>{const R0=hdr()[1];if(R0!='none')e.style.backgroundImage=R0[e.dataset.s]});const SUB=S.tab=='data'||S.tab=='design'||S.tab=='account'?[['data','Stammdaten'],['design','Design'],['account','Konto']]:['hist','stats','export','report'].includes(S.tab)?[['hist','Verlauf'],['stats','Auswertung'],['report','Bericht'],['export','Export']]:null;if(SUB)a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:14px">${SUB.map(([k,l])=>`<button class="chip ${S.tab==k?'on':''}" data-a="tab" data-v="${k}">${l}</button>`).join('')}</div>`);
 a.querySelectorAll('.card').forEach(c=>{const h=c.querySelector('h2'),t=h?h.textContent:'';if(t=='Export'&&S.tab=='stats'){c.remove();return}const k=S.tab=='data'&&['Hersteller','Bewertungsstufen','Spuck-Kategorien'].find(x=>t.startsWith(x));if(!k)return;c.classList.add('dt');c.classList.toggle('closed',!S.o[k]);h.onclick=()=>{S.o[k]=!S.o[k];c.classList.toggle('closed',!S.o[k])}});
 if(S.tab=='data')a.querySelectorAll('.man').forEach((m,i)=>{m.classList.toggle('closed',!S.o['m'+i]);const r=m.querySelector('.ed'),b=document.createElement('button');b.className='car';b.setAttribute('aria-label','Auf- oder zuklappen');b.onclick=()=>{S.o['m'+i]=!S.o['m'+i];m.classList.toggle('closed',!S.o['m'+i])};r.insertBefore(b,r.firstChild)})}A.dreset=()=>{CU={light:{},dark:{},fh:'',fb:'',fs:15};applyTheme();save();toast('Design zurückgesetzt')};
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.font){CU[t.dataset.font]=t.value;applyTheme();save()}});
@@ -404,7 +410,7 @@ Object.assign(A,{
 saveF:T(async()=>{const m=M[S.man];if(!m||m.fi[S.food]===undefined||!Object.keys(S.sel).length)return;const cr={...S.sel};await API('POST','/api/feedings',{cat_ratings:cr,manufacturer_id:m.id,food_id:m.fi[S.food],notes:S.note,timestamp:S.ft||nowIso(),kind:S.kind});S.sel=selAll();S.note='';S.ft='';return()=>toast(fbFeed(cr))}),
 saveV:T(async()=>{const fd=new FormData();fd.append('cat_name',S.vcat);fd.append('vomit_type',S.vtype);fd.append('timestamp',S.vt||nowIso());fd.append('notes',S.vnote);if(S.vfile)fd.append('image',S.vfile);const r=await API('POST','/api/vomits',undefined,fd);S.vnote='';S.vimg=null;S.vfile=null;S.vt='';return()=>{const v=V.find(x=>x.id==r.id);if(v){S.res={v,l:lk(v)};toast(fbVomit(v))}}}),
 del:T(async d=>{await API('DELETE',d.k=='f'?'/api/feedings/batch/'+d.id:'/api/vomits/'+d.id);toast('Gel\u00f6scht')}),
-addCat:T(async()=>{const v=val('#ncat');if(!v)return;await API('POST','/api/animals',{name:v,species:NEWSP});return()=>{if(S.pr.autoAll)S.sel[v]=NR();toast(pick(nameHint).replace('X',v))}}),
+addCat:T(async()=>{const v=val('#ncat');if(!v)return;await API('POST','/api/animals',{name:v,species:NEWSP,birthday:val('#nbday')||null});return()=>{if(S.pr.autoAll)S.sel[v]=NR();toast(pick(nameHint).replace('X',v))}}),
 delCat:T(async d=>{const c=CATS.find(x=>x.id==d.i);await API('DELETE','/api/cats/'+d.i);delete S.sel[c.name];if(S.vcat==c.name)S.vcat='Unbekannt';S.sc='Alle'}),
 sp:T(async d=>{const c=CATS.find(x=>x.id==d.i),n=c.sp=='dog'?'cat':'dog';await API('PUT','/api/animals/'+d.i,{species:n});toast(c.name+(n=='dog'?' ist jetzt ein Hund \ud83d\udc36':' ist jetzt eine Katze \ud83d\udc31'))}),
 mvu:d=>mvS(d.i,-1),mvd:d=>mvS(d.i,1),
@@ -419,7 +425,7 @@ delVT:T(async d=>{await API('DELETE','/api/vomit-types/'+d.k)}),
 addR:T(async()=>{const n=NR()+1;if(n>7)return toast('Maximal 7 Stufen');R[n]={l:'Neue Stufe',e:'\u2b50'};await syncR()}),
 delR:T(async()=>{const n=NR();if(B.some(b=>Object.values(b.cats).includes(n)))return toast('Diese Stufe wird noch verwendet');delete R[n];Object.keys(S.sel).forEach(k=>{if(S.sel[k]>NR())S.sel[k]=NR()});await syncR()}),
 stdDrink:T(async()=>{const n=Object.keys(S.sel);if(!n.length)return toast('Bitte zuerst Tiere ausw\u00e4hlen');const m=CAT.drink.find(x=>x.f.includes(S.pr.drink));if(!m)return;await API('POST','/api/feedings',{cat_ratings:Object.fromEntries(n.map(x=>[x,NR()])),manufacturer_id:m.id,food_id:m.fi[m.f.indexOf(S.pr.drink)],timestamp:nowIso(),kind:'drink'});toast(pick(['Frisches '+S.pr.drink+' eingetragen \ud83d\udca7','Gut hydriert \u2013 notiert \ud83d\udca7']))}),
-expCsv:()=>{location.href='/api/export/csv?lang='+LANG},expPdf:()=>{window.open('/api/export/pdf?kind='+S.kind+'&lang='+LANG+'&hide_deleted='+HD,'_blank')},
+expCsv:()=>{location.href='/api/export/csv?lang='+LANG},dbdump:()=>{location.href='/api/export/db'},expPdf:()=>{window.open('/api/export/pdf?kind='+S.kind+'&lang='+LANG+'&hide_deleted='+HD,'_blank')},
 logout:async()=>{try{await API('POST','/api/logout')}catch(e){}location.reload()},
 addUser:async()=>{const u=val('#nuser'),p=$('#npass').value;if(!u||!p)return;try{await API('POST','/api/users',{username:u,password:p});toast('Benutzer \u201e'+u+'\u201c angelegt \u2713');$('#nuser').value='';$('#npass').value=''}catch(e){}}
 });
@@ -436,8 +442,8 @@ pdrink:T(async t=>{await API('PUT','/api/default-drink',{name:t.value})})
 });
 document.addEventListener('change',e=>{if(e.target.id=='img')S.vfile=e.target.files[0]||null});
 const _p2=post2;
-post2=function(a){_p2(a);if(S.tab=='export')a.insertAdjacentHTML('afterbegin',KC());
-if(S.tab=='design'&&ME)a.insertAdjacentHTML('beforeend',`<div class="card"><h2>Konto</h2><p style="margin-top:0">Angemeldet als <b>${esc(ME.username)}</b>${ME.is_admin?' (Administrator)':''}</p><button class="btn gh" data-a="logout">Abmelden</button>${ME.is_admin?`<div style="height:16px"></div><h2>Neuen Benutzer anlegen</h2><div class="ed"><input type="text" id="nuser" placeholder="Benutzername" autocomplete="off"></div><div class="ed"><input type="password" id="npass" placeholder="Passwort (mind. 8 Zeichen)" autocomplete="new-password"><button class="btn sm" data-a="addUser">Anlegen</button></div>`:''}</div>`)};
+post2=function(a){_p2(a);
+if(S.tab=='account'&&ME)a.insertAdjacentHTML('beforeend',`<div class="card"><h2>Konto</h2><p style="margin-top:0">Angemeldet als <b>${esc(ME.username)}</b>${ME.is_admin?' (Administrator)':''}</p><button class="btn gh" data-a="logout">Abmelden</button>${ME.is_admin?`<div style="height:16px"></div><h2>Neuen Benutzer anlegen</h2><div class="ed"><input type="text" id="nuser" placeholder="Benutzername" autocomplete="off"></div><div class="ed"><input type="password" id="npass" placeholder="Passwort (mind. 8 Zeichen)" autocomplete="new-password"><button class="btn sm" data-a="addUser">Anlegen</button></div>`:''}</div>`)};
 function showLogin(setup){let el=$('#login');if(!el){document.body.insertAdjacentHTML('beforeend','<div id="login"></div>');el=$('#login')}
 el.style.cssText='position:fixed;inset:0;z-index:30;background:var(--bg);display:grid;place-items:center;padding:16px;overflow:auto';
 el.innerHTML=`<div class="card" style="width:100%;max-width:360px;margin:0"><h2>${setup?'Willkommen! Administrator anlegen':'Anmelden'}</h2><p class="mut" style="margin-top:0">${setup?'Der erste Benutzer wird Administrator. Weitere Benutzer legst du sp\u00e4ter in den Einstellungen an.':'Dieses Ger\u00e4t bleibt danach angemeldet.'}</p><input type="text" id="lu" placeholder="Benutzername" autocomplete="username" style="margin-bottom:8px"><input type="password" id="lp" placeholder="Passwort${setup?' (mind. 8 Zeichen)':''}" autocomplete="${setup?'new-password':'current-password'}" style="margin-bottom:12px"><div id="le" class="warn" hidden style="margin:0 0 12px"></div><button class="btn" id="lb">${setup?'Konto anlegen':'Anmelden'}</button></div>`;
@@ -524,14 +530,20 @@ a.querySelectorAll('button[data-a=del][data-k]').forEach(btn=>{const w=document.
 if(S.tab=='feed')a.insertAdjacentHTML('beforeend',previewCard());
 if(S.tab=='design'){const r=a.querySelector('[data-a=dreset]');if(r)r.insertAdjacentHTML('beforebegin',langCard()+themeCard())}};
 
-/* ===== Layout: Menü zentriert, bis zu 5 Tiere / Bewertungsstufen je Zeile, volle Zeilenbreite ===== */
+/* ===== Layout: Tiere/Bewertungen nutzen die volle Breite, werden aber nie gequetscht ===== */
 document.head.insertAdjacentHTML('beforeend','<style>'+
-'nav div{display:flex!important;justify-content:center;gap:2px}nav button{flex:1 1 0;min-width:0;max-width:110px}'+
+'nav div{display:flex!important;justify-content:center;gap:2px}nav button{flex:1 1 0;min-width:0;max-width:110px;padding:6px 2px;font-size:clamp(8.5px,2.6vw,10.5px);line-height:1.15;text-align:center}'+
 'html:not(.pwa) nav div{justify-content:flex-start}html:not(.pwa) nav button{flex:0 0 auto;max-width:none}'+
-'.row:has(>.chip.cat),.row.fillrow{gap:8px}'+
-'.row:has(>.chip.cat)>*,.row.fillrow>*{flex:1 1 calc((100% - 32px)/5);min-width:0;justify-content:center;text-align:center;overflow:hidden;white-space:nowrap}'+
-'.chip.cat{padding:8px 6px;font-size:13px}'+
-'.seg{display:flex;flex-wrap:wrap;gap:6px}.seg>.sg{flex:1 1 calc((100% - 24px)/5);min-width:0}'+
+'.row:has(>.chip.cat),.row.fillrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,112px),1fr));gap:8px}'+
+'.row:has(>.chip.cat)>*,.row.fillrow>*{min-width:0}'+
+'.row:has(>.chip.cat)>.chip:not(.cat),.row.fillrow>.chip{display:block;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+'.chip.cat{display:inline-flex;align-items:center;justify-content:flex-start;gap:0;padding:7px 12px 7px 9px;font-size:13.5px;white-space:nowrap;text-align:left;overflow:visible}'+
+'.chip.cat .cn{min-width:0;overflow:hidden;text-overflow:ellipsis}.ini,.av{flex:none}'+
+'.seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.seg>.sg{min-width:0;padding:10px 6px;overflow-wrap:anywhere;hyphens:auto}'+
+'.pet{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:10px}'+
+'.pet .ed{margin-bottom:8px}.pet .ed:last-child{margin-bottom:0}.pet .ed input[type=text]{flex:1 1 0;min-width:0;width:auto}'+
+'.pet .tools{flex-wrap:wrap;gap:8px}.pet .bd{display:flex;align-items:center;gap:8px;flex:1 1 100%;min-width:0}.pet .bd>.mut{flex:none}.cp{flex-wrap:wrap}.cp select{max-width:100%}.pet .bd{flex-wrap:wrap}.pet .bd input{flex:1 1 130px;min-width:0;width:auto}'+
+'.rph{margin:14px 0 8px;font-weight:700}.rpl{display:flex;align-items:center;gap:8px;flex:1 1 140px;min-width:0}.rpl input{flex:1;min-width:0;width:auto}'+
 'input[type=date],input[type=number]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);font:inherit}'+
 'input[type=date]:focus,input[type=number]:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}'+
 '</style>');
@@ -551,7 +563,7 @@ ${vs.slice(-5).reverse().map(v=>`<div class="ed" style="margin:0 0 4px;justify-c
 const vHealth=()=>{if(!CATS.length)return'<div class="card"><h2>Noch leer</h2><p>Lege unter <b>Einstellungen \u2192 Stammdaten</b> mindestens ein Tier an.</p></div>';
 const c=CATS.find(x=>x.id==S.ha)||CATS[0];S.ha=c.id;const bd=HF.birthdays[c.id]||'';
 return`<div class="row" style="margin-bottom:14px">${CATS.map(x=>cchip(x,x.id==c.id,'hsel')).join('')}</div>
-<div class="card"><h2>Steckbrief</h2><div class="cp" style="border:0"><span>Geburtstag</span><input type="date" data-e="bday" data-i="${c.id}" value="${bd}" style="width:auto"></div>${bd?`<p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:'<p class="mut" style="margin:0">Noch kein Geburtstag eingetragen.</p>'}</div>
+<div class="card"><h2>Steckbrief</h2>${bd?`<div class="cp" style="border:0"><span>Geburtstag</span><b>${new Date(bd+'T00:00').toLocaleDateString(LOCALE(),{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div><p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:'<p class="mut" style="margin:0">Noch kein Geburtstag eingetragen.</p>'}<p class="mut" style="margin:8px 0 0">Der Geburtstag wird in den Stammdaten geändert.</p></div>
 ${HF.fields.map(f=>fieldCard(c,f)).join('')}
 <div class="card"><h2>Neues Feld hinzuf\u00fcgen</h2><div class="ed"><input type="text" id="hfn" placeholder="Name, z. B. Puls"><input type="text" id="hfu" placeholder="Einheit" style="max-width:110px"></div><button class="btn gh" data-a="hfadd">Feld hinzuf\u00fcgen</button></div>`};
 Object.assign(A,{
@@ -563,6 +575,31 @@ delHF:T(async d=>{await API('DELETE','/api/health/fields/'+d.id)})});
 CONF.delHV=()=>['Wert l\u00f6schen?','Dieser Messwert wird endg\u00fcltig gel\u00f6scht.'];
 CONF.delHF=d=>['Feld l\u00f6schen?',`\u201e${(HF.fields.find(f=>f.id==d.id)||{}).name}\u201c wird ausgeblendet. Bereits erfasste Werte bleiben gespeichert.`];
 E.bday=T(async t=>{await API('PUT','/api/health/birthday/'+t.dataset.i,{birthday:t.value||null})});
+
+/* ===== Bericht: Kategorien, Tiere und Zeitraum wählen ===== */
+const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['vomit','Spucken'],['health','Gesundheit']];
+S.rp={k:{food:1,snack:1,drink:1,vomit:1,health:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
+const hasUnk=()=>V0.some(v=>v.cat=='Unbekannt');
+const vReport=()=>{const r=S.rp,td=nowIso().slice(0,10),all=CATS.every(c=>!r.x[c.id]);
+return`<div class="card"><h2>Bericht zusammenstellen</h2><p class="mut" style="margin-top:0">Wähle Kategorien, Tiere und Zeitraum. Der Bericht öffnet sich als druckfertige Seite („Als PDF speichern“). Das Alter eines Tieres steht einmal im Tierkopf (Stand: heute).</p>
+<div class="mut rph" style="margin-top:0">Kategorien</div><div class="row">${RPK.map(([k,l])=>`<button class="chip ${r.k[k]?'on':''}" data-a="rpk" data-v="${k}">${l}</button>`).join('')}</div>
+<div class="mut rph">Tiere</div><div class="row"><button class="chip ${all?'on':''}" data-a="rpall">Alle Tiere</button>${CATS.map(c=>cchip(c,!r.x[c.id],'rpa')).join('')}${hasUnk()?`<button class="chip ${r.u?'on':''}" data-a="rpa" data-v="Unbekannt">Unbekannt</button>`:''}</div>
+<div class="mut rph">Zeitraum</div><div class="row">${[7,14,30,90,365].map(d=>`<button class="chip ${!r.cust&&r.days==d?'on':''}" data-a="rpd" data-v="${d}">${d} Tage</button>`).join('')}<button class="chip ${r.cust?'on':''}" data-a="rpc">Eigener Zeitraum</button></div>
+${r.cust?`<div class="ed tools" style="margin:10px 0 0;flex-wrap:wrap"><label class="rpl"><span class="mut">Von</span><input type="date" data-rp="from" value="${r.from}" max="${td}"></label><label class="rpl"><span class="mut">Bis</span><input type="date" data-rp="to" value="${r.to}" max="${td}"></label></div>`:`<div class="ed" style="margin:10px 0 0"><span class="mut">Letzte</span><input type="number" min="1" max="3650" inputmode="numeric" data-rp="days" value="${r.days}" style="width:96px"><span class="mut">Tage</span></div>`}</div>
+<div class="card"><div class="cp" style="border:0"><span>Zeitlich gemischt</span><label class="sw"><input type="checkbox" data-rp="mix" ${r.mix?'checked':''}><i></i></label></div><p class="mut" style="margin:0">Aus: Kategorien getrennt. An: alle Einträge eines Tieres in zeitlicher Abfolge (Gesundheit bleibt oben).</p></div>
+<button class="btn" data-a="rpgo">Bericht erstellen</button>`};
+Object.assign(A,{
+rpk:d=>{S.rp.k[d.v]=S.rp.k[d.v]?0:1},
+rpa:d=>{if(d.v=='Unbekannt'){S.rp.u=S.rp.u?0:1;return}const c=CATS.find(x=>x.name==d.v);if(c)S.rp.x[c.id]=S.rp.x[c.id]?0:1},
+rpall:()=>{const all=CATS.every(c=>!S.rp.x[c.id]);CATS.forEach(c=>{S.rp.x[c.id]=all?1:0});S.rp.u=all?0:1},
+rpd:d=>{S.rp.days=+d.v;S.rp.cust=0},
+rpc:()=>{const r=S.rp;if(!r.cust){const f=new Date(Date.now()-(Math.max(1,r.days)-1)*864e5-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);r.from=r.from||f;r.to=r.to||nowIso().slice(0,10)}r.cust=r.cust?0:1},
+rpgo:()=>{const r=S.rp,k=RPK.map(x=>x[0]).filter(x=>r.k[x]),an=CATS.filter(c=>!r.x[c.id]),u=r.u&&hasUnk()?1:0;
+if(!k.length)return toast('Bitte mindestens eine Kategorie wählen');if(!an.length&&!u)return toast('Bitte mindestens ein Tier wählen');
+const q=new URLSearchParams({kinds:k.join(','),animals:an.map(c=>c.id).join(','),unknown:u,lang:LANG,cc:CATS.map(c=>c.id+'-'+ccol(c).slice(1)).join(',')});
+if(r.cust){if(!r.from||!r.to||r.from>r.to)return toast('Bitte einen gültigen Zeitraum wählen');q.set('date_from',r.from);q.set('date_to',r.to)}else q.set('days',Math.max(1,Math.min(3650,+r.days||30)));q.set('mode',r.mix?'mixed':'split');
+window.open('/api/export/report?'+q,'_blank')}});
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.rp){const r=S.rp;if(t.dataset.rp=='mix')r.mix=t.checked?1:0;else if(t.dataset.rp=='days')r.days=+t.value||30;else r[t.dataset.rp]=t.value}});
 /* ===== Push-Erinnerung ===== */
 const PUSH={ok:false,avail:false,key:null,sub:false,slots:[]};
 const b64u=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))};
@@ -573,14 +610,15 @@ if(PUSH.ok&&PUSH.avail){try{const reg=await navigator.serviceWorker.getRegistrat
 A.pushOn=async()=>{try{const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});await navigator.serviceWorker.ready;if(await Notification.requestPermission()!='granted'){toast('Benachrichtigungen wurden nicht erlaubt');return}
 const s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(PUSH.key)});await pushSend(s);PUSH.sub=true;toast('Erinnerungen aktiviert \u2713')}catch(e){console.warn(e);toast('Aktivierung fehlgeschlagen')}render()};
 A.pushOff=async()=>{try{const reg=await navigator.serviceWorker.getRegistration('/'),s=reg&&await reg.pushManager.getSubscription();if(s){await API('POST','/api/push/unsubscribe',{endpoint:s.endpoint});await s.unsubscribe()}PUSH.sub=false;toast('Erinnerungen deaktiviert')}catch(e){console.warn(e)}render()};
+A.pushTestB=async()=>{try{const r=await API('POST','/api/push/test?kind=birthday');toast(r.sent?'Geburtstags-Nachrichten gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTest=async()=>{try{const r=await API('POST','/api/push/test');toast(r.sent?'Testnachricht gesendet':'Keine Nachricht gesendet')}catch(e){}};
 const pushCard=()=>{let b;if(!PUSH.ok)b='<p class="mut" style="margin:0">Benachrichtigungen funktionieren nur \u00fcber HTTPS und in der installierten App (iPhone: \u201eZum Home-Bildschirm\u201c, ab iOS 16.4).</p>';
 else if(!PUSH.avail)b='<p class="mut" style="margin:0">Der Server hat noch keine Push-Unterst\u00fctzung. Installiere im Container das Paket \u201epywebpush\u201c.</p>';
-else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row" style="flex-wrap:nowrap">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Testnachricht senden</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
+else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). Dazu kommen Geburtstags-Nachrichten: zwei Wochen vorher und am Geburtstag um 09:00 Uhr. ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Test: Futter</button><button class="btn gh sm" data-a="pushTestB">Test: Geburtstag</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
 return`<div class="card"><h2>Erinnerungen</h2>${b}</div>`};
 const _p5=post2;
 post2=function(a){_p5(a);
-if(S.tab=='data'){a.querySelectorAll('[data-e=cat]').forEach(inp=>{const id=inp.dataset.i,row=inp.closest('.ed');if(row)row.insertAdjacentHTML('afterend',`<div class="ed" style="margin:-2px 0 12px 50px"><span class="mut">Geburtstag</span><input type="date" data-e="bday" data-i="${id}" value="${HF.birthdays[id]||''}" style="width:auto"></div>`)});const f=a.querySelector('.card');if(f)f.insertAdjacentHTML('afterend',pushCard())}};
+if(S.tab=='data'){const f=a.querySelector('.card');if(f)f.insertAdjacentHTML('afterend',pushCard())}};
 
 /* ===== Spuck-Ereignis bearbeiten ===== */
 let VD=null;

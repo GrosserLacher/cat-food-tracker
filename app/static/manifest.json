@@ -1,20 +1,20 @@
 {
-  "name": "Katzenfutter Tracker",
-  "short_name": "Futter",
-  "description": "Futter- und Spuck-Tracker für Simsa, BamBam, LaBim und Pebbles",
+  "name": "PurrfectHealth",
+  "short_name": "PurrfectHealth",
+  "description": "Futter-, Spuck- und Gesundheits-Tracker",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#3b82f6",
   "icons": [
     {
-      "src": "/static/icon-192.png",
+      "src": "/static/favicon-32.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/static/icon-512.png",
+      "src": "/static/favicon-352.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

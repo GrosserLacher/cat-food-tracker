@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import csv
 import html
 import json
@@ -17,18 +18,28 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+# =====================================================================================
+#  NAME DER ANWENDUNG – hier einfach anpassen (oder per Umgebungsvariable APP_NAME).
+#  Wird überall verwendet: Browser-Tab, App-Name auf dem Homescreen (manifest),
+#  Berichte/Export, Push-Nachrichten und API-Titel.
+# =====================================================================================
+APP_NAME = os.environ.get("APP_NAME", "PurrfectHealth")
+os.environ["APP_NAME"] = APP_NAME   # damit auch push.py / report.py den Namen kennen
+
 try:
     from app.extras import (router as extras_router, migrate, vomit_keys, relevant_keys,
                             vomit_label, rating_labels, max_score)
     from app.health import router as health_router, migrate_health
     from app.push import router as push_router, start_scheduler
+    from app.report import router as report_router, REPORT_CSS, FONT_LINK, HERO_CAT
 except ImportError:  # Start ohne Paketstruktur (z. B. "uvicorn main:app")
     from extras import (router as extras_router, migrate, vomit_keys, relevant_keys,
                         vomit_label, rating_labels, max_score)
     from health import router as health_router, migrate_health
     from push import router as push_router, start_scheduler
+    from report import router as report_router, REPORT_CSS, FONT_LINK, HERO_CAT
 
-app = FastAPI(title="Futter")
+app = FastAPI(title=APP_NAME)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -152,6 +163,7 @@ app.include_router(extras_router)
 migrate_health()                # Geburtstag, Gesundheitsfelder und -werte
 app.include_router(health_router)
 app.include_router(push_router)  # Push-Erinnerung (braucht das Paket "pywebpush")
+app.include_router(report_router)  # Bericht-Export mit Mehrfachauswahl (Futter, Snacks, Getränke, Spucken, Gesundheit)
 
 
 @app.on_event("startup")
@@ -811,6 +823,28 @@ KIND_DE = {"food": "Futter", "snack": "Snack", "drink": "Getränk"}
 KIND_EN = {"food": "Food", "snack": "Snack", "drink": "Drink"}
 
 
+@app.get("/api/export/db")
+def export_db(request: Request):
+    """Konsistente Sicherung der kompletten SQLite-Datenbank (nur Administratoren, enthält auch die Benutzerkonten)."""
+    if not request.state.user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Nur Administratoren")
+    import tempfile
+    from starlette.background import BackgroundTask
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(tmp)
+    try:
+        src.backup(dst)   # sicher auch während die App läuft
+    finally:
+        dst.close()
+        src.close()
+    slug = re.sub(r"[^a-z0-9]+", "_", APP_NAME.lower()).strip("_") or "backup"
+    filename = f"{slug}_backup_{datetime.now().strftime('%Y-%m-%d_%H%M')}.db"
+    return FileResponse(tmp, media_type="application/octet-stream", filename=filename,
+                        background=BackgroundTask(os.remove, tmp))
+
+
 @app.get("/api/export/csv")
 def export_csv(kind: Optional[str] = None, lang: Optional[str] = None):
     conn = get_db()
@@ -858,27 +892,13 @@ def export_csv(kind: Optional[str] = None, lang: Optional[str] = None):
         w.writerow([ts[:10], ts[11:16] if len(ts) >= 16 else "", f["batch_id"] or "",
                     names.get(f["kind"] or "food", ""), f["manufacturer_name"], f["food_name"], f["cat_name"],
                     f["rating"], r_labels.get(f["rating"], str(f["rating"])), f["notes"] or "", hit])
-    filename = f"futter_export_{datetime.now().strftime('%Y-%m-%d')}.csv"
+    slug = re.sub(r"[^a-z0-9]+", "_", APP_NAME.lower()).strip("_") or "export"
+    filename = f"{slug}_export_{datetime.now().strftime('%Y-%m-%d')}.csv"
     return StreamingResponse(iter([out.getvalue()]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-REPORT_CSS = """
-@page{size:A4 portrait;margin:14mm}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a;background:#fff;margin:0;padding:20px;font-size:12px;line-height:1.45}
-.no-print{background:#0f172a;color:#f8fafc;padding:12px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
-.btn{background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:12px}
-h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #e2e8f0;color:#1e293b}
-.meta{color:#64748b;font-size:11px;margin-bottom:14px}
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
-.kpi{border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#f8fafc}
-.kpi .label{font-size:10px;text-transform:uppercase;color:#64748b}.kpi .val{font-size:16px;font-weight:700;margin-top:2px}
-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px}
-th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-weight:600}
-.muted{color:#94a3b8;font-style:italic}.pill{display:inline-block;padding:2px 6px;border-radius:5px;font-weight:600;font-size:10px}
-.pill.good{background:#dcfce7;color:#166534}.pill.ok{background:#dbeafe;color:#1e40af}.pill.bad{background:#ffe4e6;color:#9f1239}.pill.neutral{background:#f1f5f9;color:#475569}
-@media print{body{padding:0}.no-print{display:none!important}}
-"""
+# REPORT_CSS (App-Design) kommt aus report.py
 
 
 @app.get("/api/export/pdf", response_class=HTMLResponse)
@@ -1001,13 +1021,13 @@ def export_pdf_report(hide_deleted: bool = False, kind: str = "food", lang: Opti
     title = KIND_DE[kind]
 
     doc = f"""<!DOCTYPE html><html lang="{lang}"><head><meta charset="UTF-8">
-<title>Futter – Bericht {title} ({now_str})</title><style>{REPORT_CSS}</style></head><body>
-<div class="no-print"><div><strong>🐾 Futter – Druck- &amp; PDF-Ansicht</strong>
+<title>{html.escape(APP_NAME)} – Bericht {title} ({now_str})</title>{FONT_LINK}<style>{REPORT_CSS}</style></head><body>
+<div class="no-print"><div><strong>🐾 {html.escape(APP_NAME)} – Druck- &amp; PDF-Ansicht</strong>
 <span style="margin-left:10px;color:#94a3b8">Wähle im Druckdialog „Als PDF speichern“.</span></div>
 <div style="display:flex;gap:8px"><button class="btn" onclick="window.print()">🖨️ Als PDF speichern / Drucken</button>
 <button class="btn" style="background:#475569" onclick="window.close()">Schließen</button></div></div>
-<h1>🐾 Futter – Gesamt-Auswertung &amp; 30-Tage-Bericht ({title})</h1>
-<div class="meta">Erstellt am: {now_str} Uhr | Tiere: {html.escape(", ".join(active_cats)) if active_cats else "–"} | Bewertungs-Skala: {scale}</div>
+<div class="wrap"><header class="hero"><div><h1>{html.escape(APP_NAME)} – Gesamt-Auswertung &amp; 30-Tage-Bericht ({title})</h1>
+<div class="meta">Erstellt am: {now_str} Uhr | Tiere: {html.escape(", ".join(active_cats)) if active_cats else "–"} | Bewertungs-Skala: {scale}</div></div>{HERO_CAT}</header>
 <div class="kpi-grid">
 <div class="kpi"><div class="label">Einträge gesamt</div><div class="val">{total}</div></div>
 <div class="kpi"><div class="label">Ø Akzeptanz (Gesamt)</div><div class="val">{overall} / {top:.2f}</div></div>
@@ -1020,11 +1040,34 @@ def export_pdf_report(hide_deleted: bool = False, kind: str = "food", lang: Opti
 <table><thead><tr><th style="width:130px">Zeitpunkt</th><th style="width:120px">Tier</th><th style="width:190px">Kategorie</th><th>Notiz</th></tr></thead><tbody>{vrows}</tbody></table>
 <h2>3. Einträge der letzten 30 Tage (gruppiert nach Runde)</h2>
 <table><thead><tr><th style="width:130px">Zeitpunkt</th><th style="width:220px">Hersteller &amp; Sorte</th><th>Tiere &amp; Bewertung</th><th style="width:160px">Notiz</th></tr></thead><tbody>{frows}</tbody></table>
-<script>window.addEventListener('load',()=>{{setTimeout(()=>window.print(),350)}});</script></body></html>"""
+</div><script>window.addEventListener('load',()=>{{setTimeout(()=>window.print(),600)}});</script></body></html>"""
     return HTMLResponse(content=doc)
 
 
 # ======================= STATISCHE DATEIEN & FRONTEND =======================
+
+@app.get("/static/manifest.json")
+def manifest():
+    # Name der Anwendung kommt aus APP_NAME; alle anderen Felder stehen in static/manifest.json
+    data = {"start_url": "/", "display": "standalone"}
+    try:
+        with open(os.path.join(STATIC_DIR, "manifest.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        pass
+    data["name"] = APP_NAME
+    data["short_name"] = APP_NAME
+    return JSONResponse(data, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/favicon.ico")
+def favicon():
+    for name, mt in (("favicon.ico", "image/x-icon"), ("favicon-32.png", "image/png"), ("icon-192-v2.png", "image/png")):
+        path = os.path.join(STATIC_DIR, name)
+        if os.path.exists(path):
+            return FileResponse(path, media_type=mt, headers={"Cache-Control": "public, max-age=86400"})
+    raise HTTPException(status_code=404, detail="Kein Favicon vorhanden")
+
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -1039,4 +1082,9 @@ def service_worker():
 
 @app.get("/")
 def serve_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    # {{APP_NAME}} und <!--APP_CONFIG--> in index.html werden hier durch den Namen aus APP_NAME ersetzt
+    with open(os.path.join(STATIC_DIR, "index.html"), encoding="utf-8") as f:
+        page = f.read()
+    cfg = "<script>window.APP_NAME=" + json.dumps(APP_NAME).replace("</", "<\\/") + ";</script>"
+    page = page.replace("<!--APP_CONFIG-->", cfg).replace("{{APP_NAME}}", html.escape(APP_NAME))
+    return HTMLResponse(page, headers={"Cache-Control": "no-cache"})

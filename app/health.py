@@ -1,5 +1,6 @@
 """
 health.py – Gesundheitsdaten je Tier (Geburtstag, Größe, Gewicht, Temperatur und eigene Felder).
+Der Geburtstag wird beim Anlegen eines Tieres und in den Stammdaten gepflegt (nicht im Gesundheits-Reiter).
 Ablage: app/health.py
 """
 import math
@@ -72,9 +73,9 @@ def overview():
             "birthdays": {str(b["id"]): b["birthday"] for b in births}}
 
 
-@router.put("/birthday/{cat_id}")
-def set_birthday(cat_id: int, data: BirthdayIn):
-    b = (data.birthday or "").strip() or None
+def clean_birthday(raw) -> Optional[str]:
+    """Prueft ein Geburtsdatum (YYYY-MM-DD, nicht in der Zukunft). Leer -> None."""
+    b = (raw or "").strip() or None
     if b:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", b):
             raise HTTPException(status_code=400, detail="Datum ungültig")
@@ -83,6 +84,13 @@ def set_birthday(cat_id: int, data: BirthdayIn):
                 raise HTTPException(status_code=400, detail="Geburtstag liegt in der Zukunft")
         except ValueError:
             raise HTTPException(status_code=400, detail="Datum ungültig")
+    return b
+
+
+@router.put("/birthday/{cat_id}")
+def set_birthday(cat_id: int, data: BirthdayIn):
+    """Wird nur von den Stammdaten der App aufgerufen (Geburtstag ist nur dort editierbar)."""
+    b = clean_birthday(data.birthday)
     conn = _db()
     conn.execute("UPDATE cats SET birthday = ? WHERE id = ?", (b, cat_id))
     conn.commit()
