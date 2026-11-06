@@ -284,6 +284,32 @@ window.I18N = {
     'Impfung löschen?': 'Delete vaccination?', 'wird aus dem Impfpass entfernt.': 'will be removed from the vaccination record.',
     'Test: Impfung': 'Test: vaccination',
 
+    /* Trend-Chart */
+    'Trend': 'Trend', '3 Mon.': '3 mo.', '6 Mon.': '6 mo.', '1 Jahr': '1 yr', 'Alles': 'All',
+    'Veränderung': 'Change', 'Trend pro Monat': 'Trend per month', 'Min / Max': 'Min / Max', 'Messungen': 'Measurements', 'Normalbereich': 'Normal range',
+    'Trage mindestens zwei Messwerte ein – dann erscheint hier die Verlaufskurve.': 'Enter at least two measurements – the trend curve will then appear here.',
+    'Normalbereich nur als grobe Orientierung. ': 'The normal range is only a rough guide. ',
+    'Die Kurve ersetzt keine tierärztliche Untersuchung.': 'The curve does not replace a veterinary examination.',
+    '⚠️ Gewichtsabnahme': '⚠️ Weight loss', '⚠️ Gewichtszunahme': '⚠️ Weight gain',
+    'im Blick behalten, bei Auffälligkeiten tierärztlich abklären.': 'keep an eye on it and consult a vet if anything seems off.',
+
+    /* Behandlungen / Post-Op-Modus */
+    'Behandlungen': 'Treatments', 'Läuft seit': 'Running for', 'Nächste Erinnerung:': 'Next reminder:', 'Keine automatischen Intervalle': 'No automatic intervals',
+    'Zuletzt:': 'Latest:', 'Log-Eintrag hinzufügen': 'Add log entry', 'Verlauf ausblenden': 'Hide log', '✓ Behandlung abschließen': '✓ Complete treatment',
+    'Neue Behandlung / Post-Op-Phase starten': 'Start new treatment / post-op phase', 'Bezeichnung': 'Title', 'Startzeitpunkt': 'Start time', 'Jetzt': 'Now',
+    'Erinnerungs-Intervall': 'Reminder interval', 'Eigener Wert …': 'Custom value …', 'Intervall in Stunden (1–168)': 'Interval in hours (1–168)',
+    'Notizen / Anweisungen': 'Notes / instructions', 'Behandlung starten': 'Start treatment', 'Abgeschlossen': 'Completed', 'Wieder aktivieren': 'Reactivate',
+    'Noch keine Einträge.': 'No entries yet.', 'Medikament': 'Medication', 'Wundkontrolle': 'Wound check', 'Futteraufnahme': 'Food intake',
+    'Allgemeinbefinden': 'General condition', 'Sonstiges': 'Other', 'Test: Behandlung': 'Test: treatment',
+    'alle 2 Std.': 'every 2 h','alle 3 Std.': 'every 3 h','alle 4 Std.': 'every 4 h','alle 6 Std.': 'every 6 h','alle 8 Std.': 'every 8 h','alle 12 Std.': 'every 12 h','alle 24 Std.': 'every 24 h',
+    'Bitte eine Bezeichnung eingeben': 'Please enter a title', 'Intervall: 1 bis 168 Stunden': 'Interval: 1 to 168 hours',
+    'Behandlung gestartet 🩺': 'Treatment started 🩺', 'Eintrag gespeichert ✓': 'Entry saved ✓',
+    'Behandlung abgeschlossen und archiviert ✓': 'Treatment completed and archived ✓',
+    'Behandlung abschließen?': 'Complete treatment?', 'Behandlung löschen?': 'Delete treatment?', 'Eintrag löschen?': 'Delete entry?',
+    'Dieser Log-Eintrag wird entfernt.': 'This log entry will be removed.',
+    'wird archiviert und bleibt für den Tierarztbericht erhalten.': 'will be archived and kept for the vet report.',
+    'wird samt aller Log-Einträge endgültig gelöscht.': 'will be permanently deleted together with all log entries.',
+
     /* Erinnerungen (Push) */
     'Erinnerungen': 'Reminders', 'Erinnerungen aktivieren': 'Enable reminders', 'Testnachricht senden': 'Send test message',
     'Deaktivieren': 'Disable', 'Erinnerungen aktiviert': 'Reminders enabled', 'Erinnerungen deaktiviert': 'Reminders disabled',

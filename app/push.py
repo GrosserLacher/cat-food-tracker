@@ -14,11 +14,16 @@ Ablauf
   * Impfungen: Läuft eine eingetragene Impfung (valid_until) in den nächsten 30 Tagen ab, kommt um 09:00 Uhr
     eine Erinnerung. Weitere Erinnerungen folgen 7 Tage vorher und am Ablauftag (je Stufe nur einmal).
     Ist für dasselbe Tier und dieselbe Impfung bereits ein neuerer Eintrag vorhanden, wird nicht erinnert.
+  * Behandlungen (Post-Op-Modus): Für jede aktive Behandlung mit Intervall wird geprüft, ob seit dem letzten Log-Eintrag
+    (bzw. dem Start, falls noch keiner existiert) mindestens interval_hours vergangen sind. Dann kommt eine Erinnerung,
+    danach spätestens nach jeweils einem weiteren Intervall erneut, bis ein neuer Eintrag dokumentiert wird.
+    Das gilt rund um die Uhr (keine Ruhezeiten), da Nachsorge auch nachts anfallen kann.
   * Die Ortszeit kommt vom Gerät (wird beim Anmelden der Erinnerung und bei jedem App-Start
     mitgeschickt), die Zeitzone des Containers spielt keine Rolle.
 """
 import asyncio
 import base64
+import calendar
 import json
 import os
 import random
@@ -142,12 +147,21 @@ VAC_TEXT = {
 }
 
 
+TREAT_TEXT = {
+    "de": [("Post-Op-Erinnerung für {name}", "Behandlung: {title} – Zeit für die nächste Kontrolle / Dokumentation!"),
+           ("Nachsorge: {name} 🩺", "Behandlung „{title}“: Zeit für die nächste Kontrolle und einen Log-Eintrag.")],
+    "en": [("Post-op reminder for {name}", "Treatment: {title} – time for the next check / documentation!"),
+           ("Aftercare: {name} 🩺", "Treatment “{title}”: time for the next check and a log entry.")],
+}
+
+
 def _db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("""CREATE TABLE IF NOT EXISTS push_subs (
         endpoint TEXT PRIMARY KEY, user_id INTEGER, p256dh TEXT, auth TEXT, lang TEXT DEFAULT 'de',
         tz INTEGER DEFAULT 0, created REAL)""")
+    conn.execute("CREATE TABLE IF NOT EXISTS push_treat (treatment_id INTEGER PRIMARY KEY, ref TEXT, sent_at REAL)")
     conn.execute("CREATE TABLE IF NOT EXISTS push_vac_sent (vac_id INTEGER, stage INTEGER, PRIMARY KEY (vac_id, stage))")
     conn.execute("CREATE TABLE IF NOT EXISTS push_sent (day TEXT, slot TEXT, tz INTEGER, PRIMARY KEY (day, slot, tz))")
     return conn
@@ -271,6 +285,37 @@ def vaccination_message(lang: str, stage: int, vaccine: str, name: str, valid_un
             "app": os.environ.get("APP_NAME", "")}
 
 
+def treatment_message(lang: str, name: str, title: str, treatment_id: int = 0, n: int = 0) -> dict:
+    lang = lang if lang in TREAT_TEXT else "de"
+    ttl, body = TREAT_TEXT[lang][n % len(TREAT_TEXT[lang])]
+    return {"title": ttl.format(name=name, title=title), "body": body.format(name=name, title=title), "url": "/",
+            "tag": f"treatment-{treatment_id}", "app": os.environ.get("APP_NAME", "")}
+
+
+def due_treatments(conn, now_local: datetime, now_epoch: float) -> list:
+    """Aktive Behandlungen mit Intervall, deren nächste Kontrolle fällig ist. Erinnert höchstens einmal pro Intervall."""
+    try:
+        rows = conn.execute("SELECT t.id, t.title, t.start_timestamp, t.interval_hours, c.name AS cat_name FROM treatments t "
+                            "JOIN cats c ON c.id = t.cat_id WHERE t.is_active = 1 AND t.interval_hours IS NOT NULL").fetchall()
+    except sqlite3.OperationalError:  # Tabelle fehlt noch
+        return []
+    out = []
+    for r in rows:
+        last = conn.execute("SELECT MAX(timestamp) AS m FROM treatment_logs WHERE treatment_id = ?", (r["id"],)).fetchone()["m"]
+        ref = max(last or "", r["start_timestamp"])
+        try:
+            due_at = datetime.fromisoformat(ref) + timedelta(hours=r["interval_hours"])
+        except ValueError:
+            continue
+        if now_local < due_at:
+            continue
+        sent = conn.execute("SELECT ref, sent_at FROM push_treat WHERE treatment_id = ?", (r["id"],)).fetchone()
+        if sent and sent["ref"] == ref and now_epoch - (sent["sent_at"] or 0) < r["interval_hours"] * 3600:
+            continue
+        out.append(dict(id=r["id"], title=r["title"], name=r["cat_name"], ref=ref))
+    return out
+
+
 def due_vaccinations(conn, now_local: datetime) -> list:
     """Fällige Impf-Erinnerungen (um 09:00 Ortszeit, bis 12:00 nachholbar). Pro Impfung und Stufe nur einmal."""
     now_min = now_local.hour * 60 + now_local.minute
@@ -359,6 +404,13 @@ def run_once(now_utc: datetime = None, send=None):
                     msg = birthday_message(s["lang"], ev["kind"], ev["name"], ev["species"], ev["years"], ev["on"], ev["id"])
                     if send(s, msg)[0]:
                         sent += 1
+            for ev in due_treatments(conn, now_local, calendar.timegm(now_utc.timetuple())):
+                conn.execute("INSERT OR REPLACE INTO push_treat (treatment_id, ref, sent_at) VALUES (?, ?, ?)",
+                             (ev["id"], ev["ref"], calendar.timegm(now_utc.timetuple())))
+                conn.commit()
+                for s in (x for x in subs if x["tz"] == tz):
+                    if send(s, treatment_message(s["lang"], ev["name"], ev["title"], ev["id"], ev["id"]))[0]:
+                        sent += 1
             for ev in due_vaccinations(conn, now_local):
                 for st in ev["reached"]:   # frühere Stufen mit abhaken, damit nicht mehrere Nachrichten kommen
                     conn.execute("INSERT OR IGNORE INTO push_vac_sent (vac_id, stage) VALUES (?, ?)", (ev["id"], st))
@@ -438,7 +490,7 @@ def unsubscribe(data: UnsubIn):
 
 @router.post("/test")
 def test(request: Request, kind: str = "feeding"):
-    """kind=feeding: Futter-Erinnerung. kind=birthday: beide Geburtstags-Nachrichten. kind=vaccination: Impf-Erinnerung (Vorschau)."""
+    """kind=feeding: Futter-Erinnerung. kind=birthday: beide Geburtstags-Nachrichten. kind=vaccination: Impf-Erinnerung. kind=treatment: Post-Op-Erinnerung (Vorschau)."""
     if not HAVE_PUSH:
         raise HTTPException(status_code=501, detail="Push ist auf dem Server nicht installiert")
     conn = _db()
@@ -460,7 +512,9 @@ def test(request: Request, kind: str = "feeding"):
             pass
     sent, errors = 0, []
     for s in subs:
-        if kind == "vaccination":
+        if kind == "treatment":
+            msgs = [treatment_message(s["lang"], sample["name"], "Nachsorge Kastration", 0)]
+        elif kind == "vaccination":
             msgs = [vaccination_message(s["lang"], 30, "Tollwut", sample["name"], date.today() + timedelta(days=30), 30, sample["id"])]
         elif kind == "birthday":
             msgs = [birthday_message(s["lang"], k, sample["name"], sample["species"], sample["years"],

@@ -43,6 +43,15 @@ def migrate_health():
         id INTEGER PRIMARY KEY AUTOINCREMENT, cat_id INTEGER NOT NULL, vaccine_name TEXT NOT NULL,
         date_given TEXT, valid_until TEXT)""")
     c.execute("CREATE INDEX IF NOT EXISTS ix_vacc_cat ON vaccinations (cat_id)")
+    c.execute("""CREATE TABLE IF NOT EXISTS treatments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, cat_id INTEGER NOT NULL, title TEXT NOT NULL,
+        start_timestamp TEXT NOT NULL, end_timestamp TEXT, interval_hours INTEGER, notes TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS treatment_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, treatment_id INTEGER NOT NULL, timestamp TEXT NOT NULL,
+        log_type TEXT NOT NULL, value_comment TEXT DEFAULT '')""")
+    c.execute("CREATE INDEX IF NOT EXISTS ix_treat_cat ON treatments (cat_id, is_active)")
+    c.execute("CREATE INDEX IF NOT EXISTS ix_treat_logs ON treatment_logs (treatment_id, timestamp)")
     if not c.execute("SELECT 1 FROM health_fields").fetchone():
         for i, (name, unit) in enumerate(DEFAULT_FIELDS, start=1):
             c.execute("INSERT INTO health_fields (name, unit, builtin, sort) VALUES (?, ?, 1, ?)", (name, unit, i))
@@ -240,6 +249,190 @@ def add_vaccination(data: VaccinationIn):
 def delete_vaccination(vac_id: int):
     conn = _db()
     conn.execute("DELETE FROM vaccinations WHERE id = ?", (vac_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+
+# --- Behandlungen / Post-Op-Modus -------------------------------------------------------------
+# Eine Behandlung hat einen Titel, Startzeit, optionales Erinnerungs-Intervall (Stunden), Notizen
+# und beliebig viele Log-Einträge (Medikament, Wundkontrolle, Futteraufnahme, Allgemeinbefinden …).
+# "Abschließen" setzt is_active = 0 und end_timestamp; die Behandlung bleibt für Berichte erhalten.
+
+def _now_ts() -> str:
+    return datetime.now().strftime("%Y-%m-%dT%H:%M")
+
+
+def _clean_ts(raw: Optional[str], label: str = "Zeitpunkt") -> str:
+    v = (raw or "").strip()[:16]
+    try:
+        datetime.fromisoformat(v)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{label} ungültig")
+    return v
+
+
+def _clean_interval(v: Optional[int]) -> Optional[int]:
+    if v is None:
+        return None
+    if not 1 <= int(v) <= 168:
+        raise HTTPException(status_code=400, detail="Intervall muss zwischen 1 und 168 Stunden liegen")
+    return int(v)
+
+
+class TreatmentIn(BaseModel):
+    cat_id: Optional[int] = None
+    title: Optional[str] = None
+    start_timestamp: Optional[str] = None
+    end_timestamp: Optional[str] = None
+    interval_hours: Optional[int] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class TreatmentLogIn(BaseModel):
+    timestamp: Optional[str] = None
+    log_type: str
+    value_comment: Optional[str] = ""
+
+
+def _sent_fields(data: BaseModel) -> dict:
+    return data.model_dump(exclude_unset=True) if hasattr(data, "model_dump") else data.dict(exclude_unset=True)
+
+
+def _treatment_rows(conn, where: str = "", params: tuple = ()):
+    rows = conn.execute("SELECT t.*, c.name AS cat_name FROM treatments t LEFT JOIN cats c ON c.id = t.cat_id " + where +
+                        " ORDER BY t.is_active DESC, t.start_timestamp DESC, t.id DESC", params).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r, is_active=bool(r["is_active"]))
+        d["logs"] = [dict(x) for x in conn.execute(
+            "SELECT id, treatment_id, timestamp, log_type, value_comment FROM treatment_logs WHERE treatment_id = ? "
+            "ORDER BY timestamp, id", (r["id"],))]
+        out.append(d)
+    return out
+
+
+def _title_taken(conn, cat_id: int, title: str, exclude_id: int = 0) -> bool:
+    return bool(conn.execute("SELECT 1 FROM treatments WHERE cat_id = ? AND lower(title) = lower(?) AND id != ?",
+                             (cat_id, title, exclude_id)).fetchone())
+
+
+@router.get("/treatments")
+def list_treatments(cat_id: Optional[int] = None, active: Optional[bool] = None):
+    where, params = [], []
+    if cat_id is not None:
+        where.append("t.cat_id = ?")
+        params.append(cat_id)
+    if active is not None:
+        where.append("t.is_active = ?")
+        params.append(int(active))
+    conn = _db()
+    out = _treatment_rows(conn, ("WHERE " + " AND ".join(where)) if where else "", tuple(params))
+    conn.close()
+    return out
+
+
+@router.post("/treatments")
+def add_treatment(data: TreatmentIn):
+    title = (data.title or "").strip()
+    if not title or data.cat_id is None:
+        raise HTTPException(status_code=400, detail="Tier und Bezeichnung sind erforderlich")
+    start = _clean_ts(data.start_timestamp, "Startzeitpunkt") if data.start_timestamp else _now_ts()
+    interval = _clean_interval(data.interval_hours)
+    conn = _db()
+    if not conn.execute("SELECT 1 FROM cats WHERE id = ?", (data.cat_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Tier ungültig")
+    if _title_taken(conn, data.cat_id, title):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Für dieses Tier gibt es bereits eine Behandlung mit dieser Bezeichnung")
+    cur = conn.execute("INSERT INTO treatments (cat_id, title, start_timestamp, interval_hours, notes, is_active) VALUES (?, ?, ?, ?, ?, 1)",
+                       (data.cat_id, title[:120], start, interval, (data.notes or "").strip()[:2000]))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"id": new_id}
+
+
+@router.put("/treatments/{tid}")
+def edit_treatment(tid: int, data: TreatmentIn):
+    """Nur gesendete Felder werden geändert. is_active=false schließt die Behandlung ab (Endzeit = jetzt)."""
+    sent = _sent_fields(data)
+    conn = _db()
+    row = conn.execute("SELECT * FROM treatments WHERE id = ?", (tid,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Behandlung nicht gefunden")
+    upd = {}
+    if "title" in sent:
+        title = (sent["title"] or "").strip()
+        if not title:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Bezeichnung darf nicht leer sein")
+        if _title_taken(conn, row["cat_id"], title, tid):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Für dieses Tier gibt es bereits eine Behandlung mit dieser Bezeichnung")
+        upd["title"] = title[:120]
+    try:
+        if "start_timestamp" in sent:
+            upd["start_timestamp"] = _clean_ts(sent["start_timestamp"], "Startzeitpunkt")
+        if "interval_hours" in sent:
+            upd["interval_hours"] = _clean_interval(sent["interval_hours"])
+        if "notes" in sent:
+            upd["notes"] = (sent["notes"] or "").strip()[:2000]
+        if "end_timestamp" in sent:
+            upd["end_timestamp"] = _clean_ts(sent["end_timestamp"], "Endzeitpunkt") if sent["end_timestamp"] else None
+        if "is_active" in sent:
+            upd["is_active"] = int(bool(sent["is_active"]))
+            if not sent["is_active"] and "end_timestamp" not in sent:
+                upd["end_timestamp"] = _now_ts()
+            if sent["is_active"]:
+                upd["end_timestamp"] = None
+    except HTTPException:
+        conn.close()
+        raise
+    if upd:
+        cols = ", ".join(f"{k} = ?" for k in upd)   # Spaltennamen stammen aus dem Code, nicht vom Client
+        conn.execute(f"UPDATE treatments SET {cols} WHERE id = ?", (*upd.values(), tid))
+        conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
+
+@router.delete("/treatments/{tid}")
+def delete_treatment(tid: int):
+    """Löscht die Behandlung samt Log-Einträgen endgültig (zum Archivieren stattdessen abschließen)."""
+    conn = _db()
+    conn.execute("DELETE FROM treatment_logs WHERE treatment_id = ?", (tid,))
+    conn.execute("DELETE FROM treatments WHERE id = ?", (tid,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+
+@router.post("/treatments/{tid}/logs")
+def add_treatment_log(tid: int, data: TreatmentLogIn):
+    kind = data.log_type.strip()
+    if not kind:
+        raise HTTPException(status_code=400, detail="Art des Eintrags fehlt")
+    ts = _clean_ts(data.timestamp) if data.timestamp else _now_ts()
+    conn = _db()
+    if not conn.execute("SELECT 1 FROM treatments WHERE id = ?", (tid,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Behandlung nicht gefunden")
+    cur = conn.execute("INSERT INTO treatment_logs (treatment_id, timestamp, log_type, value_comment) VALUES (?, ?, ?, ?)",
+                       (tid, ts, kind[:40], (data.value_comment or "").strip()[:1000]))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"id": new_id}
+
+
+@router.delete("/treatments/{tid}/logs/{log_id}")
+def delete_treatment_log(tid: int, log_id: int):
+    conn = _db()
+    conn.execute("DELETE FROM treatment_logs WHERE id = ? AND treatment_id = ?", (log_id, tid))
     conn.commit()
     conn.close()
     return {"status": "deleted"}

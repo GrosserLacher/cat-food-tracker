@@ -549,8 +549,8 @@ document.head.insertAdjacentHTML('beforeend','<style>'+
 'input[type=date]:focus,input[type=number]:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}'+
 '</style>');
 /* ===== Gesundheitsdaten ===== */
-let HF={fields:[],birthdays:{}},HV=[],PRF={},VAC=[];
-const _load3=load;load=async function(){await _load3();try{const [o,v,pr,vc]=await Promise.all([API('GET','/api/health/overview'),API('GET','/api/health/values?limit=5000'),API('GET','/api/animals/profiles'),API('GET','/api/health/vaccinations')]);HF=o;HV=v;PRF={};pr.forEach(x=>{PRF[x.id]=x});VAC=vc}catch(e){}};
+let HF={fields:[],birthdays:{}},HV=[],PRF={},VAC=[],TR=[];
+const _load3=load;load=async function(){await _load3();try{const [o,v,pr,vc,tr]=await Promise.all([API('GET','/api/health/overview'),API('GET','/api/health/values?limit=5000'),API('GET','/api/animals/profiles'),API('GET','/api/health/vaccinations'),API('GET','/api/health/treatments')]);HF=o;HV=v;PRF={};pr.forEach(x=>{PRF[x.id]=x});VAC=vc;TR=tr}catch(e){}};
 const nf=x=>Number(x).toLocaleString(LOCALE(),{maximumFractionDigits:2});
 const ageText=b=>{if(!b)return'';const d=new Date(b+'T00:00'),n=new Date();let y=n.getFullYear()-d.getFullYear(),m=n.getMonth()-d.getMonth();if(n.getDate()<d.getDate())m--;if(m<0){y--;m+=12}if(y<0)return'';
 if(y>0)return y+(y==1?' Jahr':' Jahre')+(m?', '+m+(m==1?' Monat':' Monate'):'');if(m>0)return m+(m==1?' Monat':' Monate');const t=Math.max(0,Math.floor((n-d)/864e5));return t+(t==1?' Tag':' Tage')};
@@ -574,14 +574,15 @@ const info=[p.breed,GENL[p.gender_fixed],p.color,p.chip_number?'Chip '+p.chip_nu
 body=`<div class="card emerg"><h2>⚠️ Notfall-Info · ${esc(c.name)}</h2>${info?`<p class="mut" style="margin:0 0 8px">${info}</p>`:''}
 ${ta('allergies','Allergien / Unverträglichkeiten','z. B. Huhn, Penicillin')}${ta('conditions','Chronische Diagnosen / Vorerkrankungen','z. B. chronische Niereninsuffizienz')}${ta('permanent_meds','Dauerhafte Medikation & Hinweise','z. B. Nierendiät, 1 Tablette täglich')}</div>
 ${warn.length?`<div class="card" style="border-color:#d4493e"><b>💉 Impfschutz prüfen</b>${warn.map(x=>`<div class="mut">${esc(x.v.vaccine_name)}: ${x.s.d<0?'seit '+(-x.s.d)+' Tagen abgelaufen':x.s.d==0?'läuft heute ab':'läuft in '+x.s.d+' Tagen ab'}</div>`).join('')}</div>`:''}
-<div class="card"><h2>Steckbrief</h2><div class="cp" style="border:0"><span>Geburtstag</span><b>${dFmt(bd)}</b></div>${bd?`<p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:''}<p class="mut" style="margin:8px 0 0">Name, Chip, Rasse und weitere Angaben pflegst du unter Einstellungen → Tiere.</p></div>`}
+${trSection(c)}<div class="card"><h2>Steckbrief</h2><div class="cp" style="border:0"><span>Geburtstag</span><b>${dFmt(bd)}</b></div>${bd?`<p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:''}<p class="mut" style="margin:8px 0 0">Name, Chip, Rasse und weitere Angaben pflegst du unter Einstellungen → Tiere.</p></div>`}
 else if(sec=='vac'){body=`<div class="card"><h2>💉 Impfpass · ${esc(c.name)}</h2>${vs.length?`<table class="vt"><thead><tr><th>Impfung</th><th>Gegeben</th><th>Gültig bis</th><th></th></tr></thead><tbody>${vs.map(v=>{const st=vacState(v);return`<tr><td><b>${esc(v.vaccine_name)}</b></td><td>${dFmt(v.date_given)}</td><td>${dFmt(v.valid_until)}${st?`<div><span class="pill ${st.c}">${st.t}</span></div>`:''}</td><td><button class="x" data-a="vdel" data-id="${v.id}"></button></td></tr>`}).join('')}</tbody></table>`:'<p class="mut" style="margin:0">Noch keine Impfungen eingetragen.</p>'}</div>
 <div class="card"><h2>Impfung hinzufügen</h2><input type="text" id="vn" list="vlist" placeholder="Name, z. B. Tollwut"><datalist id="vlist">${['Tollwut','Katzenseuche','Katzenschnupfen','Leukose','Staupe','Parvovirose','Leptospirose','Zwingerhusten'].map(x=>`<option value="${x}">`).join('')}</datalist>
 <div class="ed tools" style="margin-top:10px;flex-wrap:wrap"><label class="rpl"><span class="mut">Gegeben</span><input type="date" id="vg" value="${td}"></label><label class="rpl"><span class="mut">Gültig bis</span><input type="date" id="vu"></label></div>
 <button class="btn" style="margin-top:12px" data-a="vadd" data-c="${c.id}">Impfung eintragen</button><p class="mut" style="margin:10px 0 0">Läuft eine Impfung in den nächsten 30 Tagen ab, bekommst du eine Push-Erinnerung (7 Tage vorher und am Ablauftag nochmal).</p></div>`}
 else body=`${HF.fields.map(f=>fieldCard(c,f)).join('')}
+${trendCard(c)}
 <div class="card"><h2>Neues Feld hinzufügen</h2><div class="ed"><input type="text" id="hfn" placeholder="Name, z. B. Puls"><input type="text" id="hfu" placeholder="Einheit" style="max-width:110px"></div><button class="btn gh" data-a="hfadd">Feld hinzufügen</button></div>`;
-return head+body};
+return trBanners()+head+body};
 Object.assign(A,{
 hsec:d=>{S.hs=d.v},
 vadd:T(async d=>{const n=val('#vn');if(!n)return toast('Bitte den Namen der Impfung eingeben');await API('POST','/api/health/vaccinations',{cat_id:+d.c,vaccine_name:n,date_given:val('#vg')||null,valid_until:val('#vu')||null});toast('Impfung eingetragen ✓')}),
@@ -597,8 +598,8 @@ CONF.delHF=d=>['Feld l\u00f6schen?',`\u201e${(HF.fields.find(f=>f.id==d.id)||{})
 E.bday=T(async t=>{await API('PUT','/api/health/birthday/'+t.dataset.i,{birthday:t.value||null})});
 
 /* ===== Bericht: Kategorien, Tiere und Zeitraum wählen ===== */
-const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['meds','Präparate'],['vomit','Spucken'],['health','Gesundheit']];
-S.rp={k:{food:1,snack:1,drink:1,meds:1,vomit:1,health:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
+const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['meds','Präparate'],['vomit','Spucken'],['health','Gesundheit'],['treat','Behandlungen']];
+S.rp={k:{food:1,snack:1,drink:1,meds:1,vomit:1,health:1,treat:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
 const hasUnk=()=>V0.some(v=>v.cat=='Unbekannt');
 const vReport=()=>{const r=S.rp,td=nowIso().slice(0,10),all=CATS.every(c=>!r.x[c.id]);
 return`<div class="card"><h2>Bericht zusammenstellen</h2><p class="mut" style="margin-top:0">Wähle Kategorien, Tiere und Zeitraum. Der Bericht öffnet sich als druckfertige Seite („Als PDF speichern“). Das Alter eines Tieres steht einmal im Tierkopf (Stand: heute).</p>
@@ -698,6 +699,101 @@ document.head.insertAdjacentHTML('beforeend','<style>textarea{width:100%;padding
 '.pfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.pfl{display:flex;flex-direction:column;gap:4px;min-width:0}.pfl input,.pfl select,.pfl textarea{width:100%;min-width:0}.pfl+.pfl{margin-top:10px}.pfg>.pfl+.pfl{margin-top:0}'+
 '.emerg{border:2px solid #d4493e;background:rgba(212,73,62,.08)}.emerg h2{color:#d4493e}'+
 '.vt{width:100%;border-collapse:collapse;font-size:13px}.vt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 4px;border-bottom:1px solid var(--line)}.vt td{padding:9px 4px;border-bottom:1px solid var(--line);vertical-align:middle}.vt tr:last-child td{border-bottom:0}</style>');
+
+/* ===== Verlaufskurve (Trend-Chart) im Gesundheits-Tab ===== */
+Object.assign(S,{hf:null,hr:180});
+const RNG=[[90,'3 Mon.'],[180,'6 Mon.'],[365,'1 Jahr'],[0,'Alles']];
+const niceTicks=(lo,hi,n=4)=>{if(hi==lo){lo-=1;hi+=1}const raw=(hi-lo)/n,mag=Math.pow(10,Math.floor(Math.log10(raw))),st=[1,2,2.5,5,10].map(m=>m*mag).find(x=>x>=raw),t=[];let v=Math.floor(lo/st+1e-9)*st;for(let i=0;i<30;i++){t.push(+v.toFixed(6));if(v>=hi-1e-9)break;v+=st}return t};
+const refBand=(f,c)=>/temp/i.test(f.name)||f.unit=='°C'?(c.sp=='dog'?[37.5,39.2]:[38,39.2]):null;
+const isW=f=>/gewicht|weight/i.test(f.name)||f.unit=='kg';
+const lineChart=(vs,f,c)=>{const W=360,H=210,L=44,R=14,T=14,B=28,pts=vs.map(v=>({t:new Date(v.ts).getTime(),v:v.value}));
+let t0=pts[0].t,t1=pts[pts.length-1].t;if(t0==t1){t0-=432e5;t1+=432e5}
+const ys=pts.map(q=>q.v),band=refBand(f,c);let lo=Math.min(...ys),hi=Math.max(...ys);if(band){lo=Math.min(lo,band[0]-.2);hi=Math.max(hi,band[1]+.2)}
+const tk=niceTicks(lo,hi),y0=tk[0],y1=tk[tk.length-1],sx=t=>L+(t-t0)/(t1-t0)*(W-L-R),sy=v=>T+(1-(v-y0)/(y1-y0))*(H-T-B),long=(t1-t0)>3e10;
+const df=t=>new Date(t).toLocaleDateString(LOCALE(),long?{month:'short',year:'2-digit'}:{day:'2-digit',month:'2-digit'});
+const xs=[0,1,2,3].map(i=>t0+(t1-t0)*i/3),line=pts.map(q=>sx(q.t).toFixed(1)+','+sy(q.v).toFixed(1)).join(' '),last=pts[pts.length-1];
+const area=`${sx(pts[0].t).toFixed(1)},${sy(y0)} ${line} ${sx(last.t).toFixed(1)},${sy(y0)}`;
+return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Verlauf ${esc(f.name)}">
+${band?`<rect x="${L}" y="${sy(band[1]).toFixed(1)}" width="${W-L-R}" height="${(sy(band[0])-sy(band[1])).toFixed(1)}" fill="rgba(63,143,95,.14)"/><text x="${L+4}" y="${(sy(band[0])-4).toFixed(1)}" font-size="8.5" fill="var(--mut)">Normalbereich</text>`:''}
+${tk.map(v=>`<line x1="${L}" x2="${W-R}" y1="${sy(v).toFixed(1)}" y2="${sy(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${(sy(v)+3.5).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--mut)">${nf(v)}</text>`).join('')}
+${xs.map((t,i)=>`<text x="${sx(t).toFixed(1)}" y="${H-8}" text-anchor="${i==0?'start':i==3?'end':'middle'}" font-size="10" fill="var(--mut)">${df(t)}</text>`).join('')}
+<polygon points="${area}" fill="var(--acc)" opacity=".10"/>
+<polyline fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${line}"/>
+${pts.length<=45?pts.map(q=>`<circle cx="${sx(q.t).toFixed(1)}" cy="${sy(q.v).toFixed(1)}" r="3" fill="var(--card,#fff)" stroke="var(--acc)" stroke-width="2"><title>${nf(q.v)} ${esc(f.unit)} · ${new Date(q.t).toLocaleDateString(LOCALE())}</title></circle>`).join(''):''}
+<circle cx="${sx(last.t).toFixed(1)}" cy="${sy(last.v).toFixed(1)}" r="5" fill="var(--acc)"/>
+<text x="${Math.min(sx(last.t),W-R-4).toFixed(1)}" y="${(sy(last.v)-9).toFixed(1)}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">${nf(last.v)}</text></svg>`};
+const trendCard=c=>{const withV=HF.fields.filter(f=>HV.some(v=>v.cat_id==c.id&&v.field_id==f.id));
+if(!withV.length)return`<div class="card"><h2>📈 Trend</h2><p class="mut" style="margin:0">Trage mindestens zwei Messwerte ein – dann erscheint hier die Verlaufskurve.</p></div>`;
+const f=withV.find(x=>x.id==S.hf)||withV.find(isW)||withV[0];S.hf=f.id;
+const cut=S.hr?Date.now()-S.hr*864e5:0,all=HV.filter(v=>v.cat_id==c.id&&v.field_id==f.id).sort((a,b)=>a.ts<b.ts?-1:1),vs=all.filter(v=>new Date(v.ts).getTime()>=cut);
+const head=`<div class="row" style="margin-bottom:10px">${withV.map(x=>`<button class="chip ${x.id==f.id?'on':''}" data-a="hfld" data-v="${x.id}" style="padding:6px 12px;font-size:13px">${esc(x.name)}</button>`).join('')}</div>
+<div class="row" style="margin-bottom:12px;flex-wrap:nowrap;gap:6px">${RNG.map(([d,l])=>`<button class="chip ${S.hr==d?'on':''}" data-a="hrng" data-v="${d}" style="flex:1 1 0;min-width:0;padding:6px 2px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</button>`).join('')}</div>`;
+if(vs.length<2)return`<div class="card"><h2>📈 Trend · ${esc(f.name)}</h2>${head}<p class="mut" style="margin:0">${all.length?'Im gewählten Zeitraum gibt es nur '+vs.length+' Messwert'+(vs.length==1?'':'e')+' – für die Kurve werden mindestens zwei benötigt. Wähle einen längeren Zeitraum oder trage weitere Werte ein.':'Noch keine Werte.'}</p></div>`;
+const a=vs[0],b=vs[vs.length-1],d=b.value-a.value,pc=a.value?d/a.value*100:0,days=Math.max(1,(new Date(b.ts)-new Date(a.ts))/864e5),n=vs.length;
+let sl=0;if(n>=3){const xs=vs.map(v=>new Date(v.ts).getTime()/864e5),mx=xs.reduce((p,q)=>p+q,0)/n,my=vs.reduce((p,q)=>p+q.value,0)/n;let nu=0,de=0;vs.forEach((v,i)=>{nu+=(xs[i]-mx)*(v.value-my);de+=(xs[i]-mx)**2});sl=de?nu/de*30.44:0}else sl=d/days*30.44;
+const mn=Math.min(...vs.map(v=>v.value)),mxv=Math.max(...vs.map(v=>v.value)),sg=x=>(x>0?'+':'')+nf(x);
+let hint='';
+if(isW(f)&&days>=14&&Math.abs(pc)>=5)hint=`<div class="pill ${pc<0?'r1':'r2'}" style="margin-top:10px;white-space:normal">${pc<0?'⚠️ Gewichtsabnahme':'⚠️ Gewichtszunahme'}: ${sg(pc)} % in ${Math.round(days)} Tagen – im Blick behalten, bei Auffälligkeiten tierärztlich abklären.</div>`;
+const bnd=refBand(f,c);if(bnd){if(b.value>39.5)hint=`<div class="pill r1" style="margin-top:10px;white-space:normal">⚠️ Letzte Temperatur ${nf(b.value)} °C – erhöht (Fieber möglich). Bei anhaltend hohen Werten tierärztlich abklären.</div>`;else if(b.value>bnd[1])hint=`<div class="pill r2" style="margin-top:10px;white-space:normal">Letzte Temperatur leicht über dem Normalbereich (${nf(bnd[0])}–${nf(bnd[1])} °C).</div>`;else if(b.value<bnd[0])hint=`<div class="pill r2" style="margin-top:10px;white-space:normal">Letzte Temperatur unter dem Normalbereich (${nf(bnd[0])}–${nf(bnd[1])} °C).</div>`}
+return`<div class="card"><h2>📈 Trend · ${esc(f.name)}${f.unit?` <span class="mut" style="text-transform:none;letter-spacing:0">(${esc(f.unit)})</span>`:''}</h2>${head}${lineChart(vs,f,c)}
+<div class="pfg" style="margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(96px,1fr))"><div><div class="mut">Veränderung</div><b>${sg(d)} ${esc(f.unit)}</b>${a.value?`<div class="mut">${sg(pc)} %</div>`:''}</div><div><div class="mut">Trend pro Monat</div><b>${sg(sl)} ${esc(f.unit)}</b></div><div><div class="mut">Min / Max</div><b>${nf(mn)} / ${nf(mxv)}</b></div><div><div class="mut">Messungen</div><b>${n}</b></div></div>${hint}
+<p class="mut" style="margin:10px 0 0;font-size:12px">${bnd?'Normalbereich nur als grobe Orientierung. ':''}Die Kurve ersetzt keine tierärztliche Untersuchung.</p></div>`};
+Object.assign(A,{hfld:d=>{S.hf=+d.v},hrng:d=>{S.hr=+d.v}});
+
+/* ===== Behandlungen / Post-Op-Modus ===== */
+const LOGT=[['Medikament','💊','Name & Dosis'],['Wundkontrolle','🩹','z. B. trocken, leicht gerötet'],['Futteraufnahme','🍽️','z. B. halbe Portion gefressen'],['Allgemeinbefinden','🐾','z. B. munter, etwas müde'],['Sonstiges','📝','Beschreibung']];
+Object.assign(S,{tq:null,tf:0,tfm:null,tx:{}});
+const tms=x=>new Date(x).getTime();
+const durTxt=ms=>{const m=Math.max(0,Math.floor(ms/6e4)),d=Math.floor(m/1440),h=Math.floor(m%1440/60),mi=m%60,u=LANG=='en'?['d','h','min']:['Tg.','Std.','Min.'];return d?`${d} ${u[0]} ${h} ${u[1]}`:h?`${h} ${u[1]} ${mi} ${u[2]}`:`${mi} ${u[2]}`};
+const tickTxt=(k,ts)=>{if(k=='since')return durTxt(Date.now()-ts);const en=LANG=='en',tm=new Date(ts).toLocaleTimeString(LOCALE(),{hour:'2-digit',minute:'2-digit'});return ts<=Date.now()?(en?'overdue for ':'überfällig seit ')+durTxt(Date.now()-ts):(en?'in ':'in ')+durTxt(ts-Date.now())+' ('+tm+')'};
+const trNext=t=>{if(!t.interval_hours)return null;const last=t.logs.length?t.logs[t.logs.length-1].timestamp:'',ref=last>t.start_timestamp?last:t.start_timestamp;return tms(ref)+t.interval_hours*36e5};
+const trLogList=t=>`<div style="margin-top:10px">${t.logs.length?[...t.logs].reverse().map(l=>`<div class="cp" style="align-items:flex-start;gap:8px"><div><span class="pill">${esc(l.log_type)}</span> <span class="mut">${fmt(tms(l.timestamp))}</span>${l.value_comment?`<div>${esc(l.value_comment)}</div>`:''}</div><button class="x" data-a="tldel" data-t="${t.id}" data-id="${l.id}" aria-label="Löschen"></button></div>`).join(''):'<p class="mut" style="margin:0">Noch keine Einträge.</p>'}</div>`;
+const trBanner=t=>{const nx=trNext(t),last=t.logs[t.logs.length-1],q=S.tq&&S.tq.tid==t.id?S.tq:null,lt=q?LOGT.find(x=>x[0]==q.type):null;
+return`<div class="tbanner"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="tdot"></span><b style="font-size:16px">🩺 ${esc(t.title)}</b><span class="pill">${esc(t.cat_name||'')}</span></div>
+<div class="mut" style="margin-top:6px">Läuft seit <b data-tick="since" data-ts="${tms(t.start_timestamp)}">${tickTxt('since',tms(t.start_timestamp))}</b></div>
+<div style="margin-top:2px">${nx?`Nächste Erinnerung: <b data-tick="next" data-ts="${nx}" ${nx<=Date.now()?'style="color:#d4493e"':''}>${tickTxt('next',nx)}</b>`:'<span class="mut">Keine automatischen Intervalle</span>'}</div>
+${last?`<div class="mut" style="margin-top:2px">Zuletzt: ${esc(last.log_type)} · ${fmt(tms(last.timestamp))}${last.value_comment?' · '+esc(last.value_comment):''}</div>`:''}
+${t.notes?`<div class="tnote">${esc(t.notes)}</div>`:''}
+<div class="mut" style="margin:12px 0 6px;font-weight:700">Log-Eintrag hinzufügen</div>
+<div class="row" style="gap:6px">${LOGT.map(([k,e])=>`<button class="chip ${q&&q.type==k?'on':''}" data-a="tqtype" data-tid="${t.id}" data-v="${k}" style="padding:7px 11px;font-size:13px">${e} ${k}</button>`).join('')}</div>
+${q?`<div style="margin-top:10px"><input type="text" id="tqc" value="${esc(q.comment)}" placeholder="${esc(lt?lt[2]:'')}"><div class="mut" style="margin:10px 0 4px">Zeitpunkt</div><input type="datetime-local" id="tqt" value="${q.ts||nowIso()}"><div class="row" style="margin-top:10px;flex-wrap:nowrap"><button class="btn gh" data-a="tqcancel" style="flex:1">Abbrechen</button><button class="btn" data-a="tqsave" style="flex:2">${lt?lt[1]:''} Speichern</button></div></div>`:''}
+<div class="row" style="margin-top:12px;gap:8px"><button class="chip" data-a="trlogs" data-id="${t.id}" style="padding:7px 12px;font-size:13px">${S.tx[t.id]?'Verlauf ausblenden':'Verlauf'} (${t.logs.length})</button><button class="chip" data-a="trdone" data-id="${t.id}" style="padding:7px 12px;font-size:13px">✓ Behandlung abschließen</button></div>
+${S.tx[t.id]?trLogList(t):''}</div>`};
+const trBanners=()=>TR.filter(t=>t.is_active).map(trBanner).join('');
+const IVL=[['','Keine automatischen Intervalle'],['2','alle 2 Std.'],['3','alle 3 Std.'],['4','alle 4 Std.'],['6','alle 6 Std.'],['8','alle 8 Std.'],['12','alle 12 Std.'],['24','alle 24 Std.'],['custom','Eigener Wert …']];
+const trSection=c=>{const done=TR.filter(t=>!t.is_active&&t.cat_id==c.id),f=S.tfm;
+const form=S.tf&&f?`<div style="margin-top:12px"><label class="pfl"><span class="mut">Bezeichnung</span><input type="text" id="tft" value="${esc(f.title)}" placeholder="z. B. Zahnsanierung & Extraktion"></label>
+<label class="pfl"><span class="mut">Startzeitpunkt</span><div class="ed" style="margin:0"><input type="datetime-local" id="tfs" value="${f.start}" style="flex:1;min-width:0"><button class="btn sm" data-a="tfnow">Jetzt</button></div></label>
+<label class="pfl"><span class="mut">Erinnerungs-Intervall</span><select id="tfi">${IVL.map(([v,l])=>`<option value="${v}" ${f.int==v?'selected':''}>${l}</option>`).join('')}</select></label>
+${f.int=='custom'?`<label class="pfl"><span class="mut">Intervall in Stunden (1–168)</span><input type="number" id="tfic" min="1" max="168" inputmode="numeric" value="${esc(f.cint)}"></label>`:''}
+<label class="pfl"><span class="mut">Notizen / Anweisungen</span><textarea id="tfn" rows="3" placeholder="z. B. Kein Springen erlauben, Schmerzmittel alle 8 Std.">${esc(f.notes)}</textarea></label>
+<div class="row" style="margin-top:12px;flex-wrap:nowrap"><button class="btn gh" data-a="tfclose" style="flex:1">Abbrechen</button><button class="btn" data-a="tfsave" style="flex:2">Behandlung starten</button></div></div>`:'';
+return`<div class="card"><h2>🩺 Behandlungen · ${esc(c.name)}</h2>${S.tf?'':'<button class="btn" data-a="tfopen">Neue Behandlung / Post-Op-Phase starten</button>'}${form}
+${done.length?`<div class="mut" style="margin:14px 0 6px;font-weight:700">Abgeschlossen</div>${done.map(t=>`<div class="cp" style="flex-direction:column;align-items:stretch;gap:6px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b>${esc(t.title)}</b><div class="mut">${fmt(tms(t.start_timestamp))}${t.end_timestamp?' – '+fmt(tms(t.end_timestamp)):''} · ${t.logs.length} Einträge</div></div></div>
+<div class="row" style="gap:6px"><button class="chip" data-a="trlogs" data-id="${t.id}" style="padding:6px 11px;font-size:12.5px">${S.tx[t.id]?'Verlauf ausblenden':'Verlauf'}</button><button class="chip" data-a="trreact" data-id="${t.id}" style="padding:6px 11px;font-size:12.5px">Wieder aktivieren</button><button class="chip" data-a="trdel" data-id="${t.id}" style="padding:6px 11px;font-size:12.5px;color:#d4493e">Löschen</button></div>${S.tx[t.id]?trLogList(t):''}</div>`).join('')}`:''}</div>`};
+Object.assign(A,{
+tfopen:()=>{S.tf=1;S.tfm={title:'',start:nowIso(),int:'4',cint:'',notes:''}},
+tfclose:()=>{S.tf=0;S.tfm=null},
+tfnow:()=>{if(S.tfm)S.tfm.start=nowIso()},
+tfsave:T(async()=>{const f=S.tfm;if(!f)return;const title=f.title.trim();if(!title)return toast('Bitte eine Bezeichnung eingeben');const iv=f.int=='custom'?parseInt(f.cint):(f.int?+f.int:null);if(f.int=='custom'&&!(iv>=1&&iv<=168))return toast('Intervall: 1 bis 168 Stunden');
+await API('POST','/api/health/treatments',{cat_id:S.ha,title,start_timestamp:f.start||null,interval_hours:iv||null,notes:f.notes});S.tf=0;S.tfm=null;return()=>toast('Behandlung gestartet 🩺')}),
+tqtype:d=>{S.tq={tid:+d.tid,type:d.v,comment:'',ts:''}},
+tqcancel:()=>{S.tq=null},
+tqsave:T(async()=>{const q=S.tq;if(!q)return;await API('POST','/api/health/treatments/'+q.tid+'/logs',{log_type:q.type,value_comment:q.comment,timestamp:q.ts||null});S.tq=null;return()=>toast('Eintrag gespeichert ✓')}),
+trlogs:d=>{S.tx[d.id]=!S.tx[d.id]},
+trdone:T(async d=>{await API('PUT','/api/health/treatments/'+d.id,{is_active:false});return()=>toast('Behandlung abgeschlossen und archiviert ✓')}),
+trreact:T(async d=>{await API('PUT','/api/health/treatments/'+d.id,{is_active:true})}),
+trdel:T(async d=>{await API('DELETE','/api/health/treatments/'+d.id)}),
+tldel:T(async d=>{await API('DELETE','/api/health/treatments/'+d.t+'/logs/'+d.id)})});
+CONF.trdone=d=>{const t=TR.find(x=>x.id==d.id)||{};return['Behandlung abschließen?',`„${t.title||''}“ wird archiviert und bleibt für den Tierarztbericht erhalten.`]};
+CONF.trdel=d=>{const t=TR.find(x=>x.id==d.id)||{};return['Behandlung löschen?',`„${t.title||''}“ wird samt aller Log-Einträge endgültig gelöscht.`]};
+CONF.tldel=()=>['Eintrag löschen?','Dieser Log-Eintrag wird entfernt.'];
+document.addEventListener('input',e=>{const t=e.target,f=S.tfm,q=S.tq;if(f){if(t.id=='tft')f.title=t.value;else if(t.id=='tfs')f.start=t.value;else if(t.id=='tfn')f.notes=t.value;else if(t.id=='tfic')f.cint=t.value}if(q){if(t.id=='tqc')q.comment=t.value;else if(t.id=='tqt')q.ts=t.value}});
+document.addEventListener('change',e=>{const t=e.target;if(t.id=='tfi'&&S.tfm){S.tfm.int=t.value;render()}});
+setInterval(()=>document.querySelectorAll('[data-tick]').forEach(e=>{e.textContent=tickTxt(e.dataset.tick,+e.dataset.ts)}),30000);
+document.head.insertAdjacentHTML('beforeend','<style>.tbanner{border:2px solid #d4493e;background:linear-gradient(135deg,rgba(212,73,62,.16),rgba(246,207,211,.38));border-radius:20px;padding:14px;margin-bottom:14px;box-shadow:0 0 0 4px rgba(212,73,62,.08)}'+
+'.tdot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#d4493e;animation:tp 1.6s infinite}@keyframes tp{0%{box-shadow:0 0 0 0 rgba(212,73,62,.6)}70%{box-shadow:0 0 0 9px rgba(212,73,62,0)}100%{box-shadow:0 0 0 0 rgba(212,73,62,0)}}'+
+'@media(prefers-reduced-motion:reduce){.tdot{animation:none}}.tnote{margin-top:8px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.55);border:1px dashed #d4493e;white-space:pre-wrap}</style>');
 /* ===== Push-Erinnerung ===== */
 const PUSH={ok:false,avail:false,key:null,sub:false,slots:[]};
 const b64u=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))};
@@ -708,12 +804,13 @@ if(PUSH.ok&&PUSH.avail){try{const reg=await navigator.serviceWorker.getRegistrat
 A.pushOn=async()=>{try{const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});await navigator.serviceWorker.ready;if(await Notification.requestPermission()!='granted'){toast('Benachrichtigungen wurden nicht erlaubt');return}
 const s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(PUSH.key)});await pushSend(s);PUSH.sub=true;toast('Erinnerungen aktiviert \u2713')}catch(e){console.warn(e);toast('Aktivierung fehlgeschlagen')}render()};
 A.pushOff=async()=>{try{const reg=await navigator.serviceWorker.getRegistration('/'),s=reg&&await reg.pushManager.getSubscription();if(s){await API('POST','/api/push/unsubscribe',{endpoint:s.endpoint});await s.unsubscribe()}PUSH.sub=false;toast('Erinnerungen deaktiviert')}catch(e){console.warn(e)}render()};
+A.pushTestT=async()=>{try{const r=await API('POST','/api/push/test?kind=treatment');toast(r.sent?'Test gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTestV=async()=>{try{const r=await API('POST','/api/push/test?kind=vaccination');toast(r.sent?'Test gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTestB=async()=>{try{const r=await API('POST','/api/push/test?kind=birthday');toast(r.sent?'Geburtstags-Nachrichten gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTest=async()=>{try{const r=await API('POST','/api/push/test');toast(r.sent?'Testnachricht gesendet':'Keine Nachricht gesendet')}catch(e){}};
 const pushCard=()=>{let b;if(!PUSH.ok)b='<p class="mut" style="margin:0">Benachrichtigungen funktionieren nur \u00fcber HTTPS und in der installierten App (iPhone: \u201eZum Home-Bildschirm\u201c, ab iOS 16.4).</p>';
 else if(!PUSH.avail)b='<p class="mut" style="margin:0">Der Server hat noch keine Push-Unterst\u00fctzung. Installiere im Container das Paket \u201epywebpush\u201c.</p>';
-else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). Dazu kommen Geburtstags-Nachrichten (zwei Wochen vorher und am Geburtstag um 09:00 Uhr) und Impf-Erinnerungen. ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Test: Futter</button><button class="btn gh sm" data-a="pushTestB">Test: Geburtstag</button><button class="btn gh sm" data-a="pushTestV">Test: Impfung</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
+else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). Dazu kommen Geburtstags-Nachrichten (zwei Wochen vorher und am Geburtstag um 09:00 Uhr) und Impf-Erinnerungen. ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Test: Futter</button><button class="btn gh sm" data-a="pushTestB">Test: Geburtstag</button><button class="btn gh sm" data-a="pushTestV">Test: Impfung</button><button class="btn gh sm" data-a="pushTestT">Test: Behandlung</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
 return`<div class="card"><h2>Erinnerungen</h2>${b}</div>`};
 const _p5=post2;
 post2=function(a){_p5(a);

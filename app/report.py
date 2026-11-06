@@ -16,6 +16,7 @@ Dieses Modul stellt ausserdem BASE_CSS, FONT_LINK und HERO_CAT bereit, damit auc
 bestehende Standard-Bericht (main.py) im selben Design erscheint.
 """
 import html
+import math
 import os
 import re
 import sqlite3
@@ -35,7 +36,7 @@ DB_PATH = os.path.join(DATA_DIR, "tracker.db")
 router = APIRouter(prefix="/api/export")
 
 KIND_KEYS = ("food", "snack", "drink")
-ALL_KINDS = KIND_KEYS + ("meds", "vomit", "health")
+ALL_KINDS = KIND_KEYS + ("meds", "vomit", "health", "treat")
 DEFAULT_COLORS = ["#f4b183", "#a8d5ba", "#b9a8e8", "#f2a7c3", "#9fcbe8", "#e8d08a"]
 esc = html.escape
 
@@ -110,8 +111,13 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 .av.dog::before,.av.dog::after{top:.05em;width:.5em;height:.9em;border:0;background:var(--ib);border-radius:.15em .15em .5em .5em}
 .av.dog::before{left:-.28em;transform:rotate(10deg)}.av.dog::after{right:-.28em;transform:rotate(-10deg)}
 .pill.k-food{background:#fbe6dd;color:#c8563a}.pill.k-snack{background:#fdf0d5;color:#a8730f}.pill.k-drink{background:#e5edf8;color:#5a7fb8}
+.pill.k-treat{background:#dff1f0;color:#2a8079}
 .pill.k-meds{background:#ece6fb;color:#6b52b8}
 .pill.k-vomit{background:#fbe3df;color:#c2453b}.pill.k-health{background:#e1f1e3;color:#3f8f5f}
+.tcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 12px}
+.tcard h4{margin:0;font:600 14px Fraunces,Georgia,serif}.tcard .tmeta{color:var(--mut);font-size:11px;margin:4px 0 8px}
+.tcard .tnote{background:#fbf1de;border-radius:10px;padding:7px 10px;margin:0 0 8px;font-size:11px}
+.tcard table{margin:0}
 .sum{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 .nw{white-space:nowrap}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
@@ -119,7 +125,7 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 .fcard h4{margin:0 0 4px;font:600 13px Fraunces,Georgia,serif}
 .fcard .big{font:600 22px Fraunces,Georgia,serif}
 .fcard .stats{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--mut);font-size:10.5px;margin-top:2px}
-.spark{display:block;width:100%;height:46px;margin:6px 0}
+.spark{display:block;width:100%;height:auto;margin:6px 0}
 .fcard table{margin:6px 0 0;font-size:10.5px;border-radius:8px}
 .fcard th,.fcard td{padding:4px 7px}
 .foot{color:var(--mut);font-size:10.5px;text-align:center;margin:18px 0 0}
@@ -132,7 +138,9 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 TXT = {
     "de": dict(
         title="Bericht", created="Erstellt am", period="Zeitraum", animals="Tiere",
-        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", meds="Präparate", vomit="Spucken", health="Gesundheit"),
+        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", meds="Präparate", vomit="Spucken", health="Gesundheit", treat="Behandlungen"),
+        t_active="aktiv", t_done="abgeschlossen", t_start="Start", t_end="Ende", t_interval="Intervall", t_every="alle {n} Std.",
+        t_none_interval="kein festes Intervall", t_notes="Anweisungen", t_type="Art", t_desc="Beschreibung", t_nologs="Keine Log-Einträge.", t_logs="Einträge",
         med="Präparat", dose="Dosis", with_food="mit Fütterung",
         species=dict(cat="Katze", dog="Hund"), born="geboren am", age="Alter am Exporttag", no_birthday="Geburtstag nicht eingetragen",
         unknown="Unbekannt", unknown_note="Spuck-Ereignisse ohne Tierzuordnung",
@@ -148,7 +156,9 @@ TXT = {
     ),
     "en": dict(
         title="Report", created="Created on", period="Period", animals="Animals",
-        kinds=dict(food="Food", snack="Snacks", drink="Drinks", meds="Medication", vomit="Vomiting", health="Health"),
+        kinds=dict(food="Food", snack="Snacks", drink="Drinks", meds="Medication", vomit="Vomiting", health="Health", treat="Treatments"),
+        t_active="active", t_done="completed", t_start="Start", t_end="End", t_interval="Interval", t_every="every {n} h",
+        t_none_interval="no fixed interval", t_notes="Instructions", t_type="Type", t_desc="Description", t_nologs="No log entries.", t_logs="entries",
         med="Medication", dose="Dose", with_food="with feeding",
         species=dict(cat="Cat", dog="Dog"), born="born on", age="Age on export day", no_birthday="Birthday not set",
         unknown="Unknown", unknown_note="Vomiting incidents without an assigned animal",
@@ -208,18 +218,66 @@ def _fmt_dt(s: str, t: dict) -> str:
         return s or ""
 
 
-def _spark(vals) -> str:
-    if len(vals) < 2:
+def _nice_ticks(lo: float, hi: float, n: int = 4) -> list:
+    if hi == lo:
+        lo, hi = lo - 1, hi + 1
+    raw = (hi - lo) / n
+    mag = 10 ** math.floor(math.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
+    v, out = math.floor(lo / step + 1e-9) * step, []
+    for _ in range(30):
+        out.append(round(v, 6))
+        if v >= hi - 1e-9:
+            break
+        v += step
+    return out
+
+
+def _chart(pts, unit: str, lang: str, band=None) -> str:
+    """Liniendiagramm mit Achsen. pts = [(datetime, value)], mindestens 2 Punkte, aufsteigend."""
+    if len(pts) < 2:
         return ""
-    w, h, p = 300, 56, 6
-    mn, mx = min(vals), max(vals)
-    r = (mx - mn) or 1
-    pts = [(p + i * (w - 2 * p) / (len(vals) - 1), h - p - (v - mn) / r * (h - 2 * p)) for i, v in enumerate(vals)]
-    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    lx, ly = pts[-1]
-    return (f'<svg class="spark" viewBox="0 0 {w} {h}" aria-hidden="true"><polyline fill="none" stroke="#c8563a" '
-            f'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{poly}"/>'
-            f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="4" fill="#c8563a"/></svg>')
+    W, H, L, R, T, B = 360, 170, 40, 12, 12, 24
+    t0, t1 = pts[0][0].timestamp(), pts[-1][0].timestamp()
+    if t0 == t1:
+        t0, t1 = t0 - 43200, t1 + 43200
+    ys = [v for _, v in pts]
+    lo, hi = min(ys), max(ys)
+    if band:
+        lo, hi = min(lo, band[0] - 0.2), max(hi, band[1] + 0.2)
+    ticks = _nice_ticks(lo, hi)
+    y0, y1 = ticks[0], ticks[-1]
+    sx = lambda t: L + (t - t0) / (t1 - t0) * (W - L - R)
+    sy = lambda v: T + (1 - (v - y0) / (y1 - y0)) * (H - T - B)
+    long_range = (t1 - t0) > 3e7
+    fmt = (lambda t: datetime.fromtimestamp(t).strftime("%m/%y")) if long_range else (
+        (lambda t: datetime.fromtimestamp(t).strftime("%d.%m.")) if lang == "de" else (lambda t: datetime.fromtimestamp(t).strftime("%m-%d")))
+    line = " ".join(f"{sx(d.timestamp()):.1f},{sy(v):.1f}" for d, v in pts)
+    lx, ly = sx(pts[-1][0].timestamp()), sy(pts[-1][1])
+    out = [f'<svg class="spark" viewBox="0 0 {W} {H}" aria-hidden="true">']
+    if band:
+        out.append(f'<rect x="{L}" y="{sy(band[1]):.1f}" width="{W - L - R}" height="{sy(band[0]) - sy(band[1]):.1f}" fill="rgba(63,143,95,.14)"/>')
+    for v in ticks:
+        out.append(f'<line x1="{L}" x2="{W - R}" y1="{sy(v):.1f}" y2="{sy(v):.1f}" stroke="#eddfd2" stroke-width="1"/>'
+                   f'<text x="{L - 5}" y="{sy(v) + 3.5:.1f}" text-anchor="end" font-size="10" fill="#85746a">{_num(v, lang)}</text>')
+    for i in range(4):
+        t = t0 + (t1 - t0) * i / 3
+        anchor = "start" if i == 0 else ("end" if i == 3 else "middle")
+        out.append(f'<text x="{sx(t):.1f}" y="{H - 7}" text-anchor="{anchor}" font-size="10" fill="#85746a">{fmt(t)}</text>')
+    out.append(f'<polygon points="{sx(t0):.1f},{sy(y0):.1f} {line} {lx:.1f},{sy(y0):.1f}" fill="#c8563a" opacity=".10"/>')
+    out.append(f'<polyline fill="none" stroke="#c8563a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{line}"/>')
+    if len(pts) <= 45:
+        out += [f'<circle cx="{sx(d.timestamp()):.1f}" cy="{sy(v):.1f}" r="2.8" fill="#fff" stroke="#c8563a" stroke-width="1.8"/>' for d, v in pts]
+    out.append(f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="4.5" fill="#c8563a"/>'
+               f'<text x="{min(lx, W - R - 3):.1f}" y="{ly - 8:.1f}" text-anchor="end" font-size="11" font-weight="700" fill="#2d2420">{_num(pts[-1][1], lang)}</text></svg>')
+    return "".join(out)
+
+
+def _band(name: str, unit: str, species: str):
+    """Grober Normalbereich für Temperatur (nur zur Orientierung)."""
+    if "temp" in name.lower() or unit == "°C":
+        return (37.5, 39.2) if species == "dog" else (38.0, 39.2)
+    return None
 
 
 def _text_color(hexcol: str) -> str:
@@ -288,6 +346,15 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
             if m["cat_name"] in pet_names:
                 meds_by_cat.setdefault(m["cat_name"], []).append(m)
 
+    treats_by_cat = {}
+    if "treat" in sel and pets:
+        pid2 = ",".join(str(p["id"]) for p in pets)
+        for tr in conn.execute(f"SELECT * FROM treatments WHERE cat_id IN ({pid2}) AND start_timestamp <= ? "
+                               "AND (end_timestamp IS NULL OR end_timestamp >= ?) ORDER BY start_timestamp", (end, start)):
+            logs = conn.execute("SELECT timestamp, log_type, value_comment FROM treatment_logs WHERE treatment_id = ? ORDER BY timestamp, id",
+                                (tr["id"],)).fetchall()
+            treats_by_cat.setdefault(tr["cat_id"], []).append((tr, logs))
+
     vtypes = {r["key"]: (r["emoji"] or "", bool(r["relevant"])) for r in conn.execute("SELECT key, emoji, relevant FROM vomit_types")}
     vomits = {}
     if "vomit" in sel:
@@ -350,6 +417,28 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
                     f"<td>{rating_pill(f['rating'])}</td><td>{esc(f['notes'] or '–')}</td></tr>")
         return out + "</tbody></table>"
 
+    def treat_section(p):
+        lst = treats_by_cat.get(p["id"], [])
+        h = f"<h3>{esc(t['kinds']['treat'])}</h3>"
+        if not lst:
+            return h + f"<p class='muted'>{t['none_entries']}</p>"
+        out = h
+        for tr, logs in lst:
+            active = bool(tr["is_active"])
+            status = f"<span class='pill {'bad' if active else 'neutral'}'>{t['t_active'] if active else t['t_done']}</span>"
+            iv = t["t_every"].format(n=tr["interval_hours"]) if tr["interval_hours"] else t["t_none_interval"]
+            meta = f"{t['t_start']}: {_fmt_dt(tr['start_timestamp'], t)}"
+            if tr["end_timestamp"]:
+                meta += f" · {t['t_end']}: {_fmt_dt(tr['end_timestamp'], t)}"
+            meta += f" · {t['t_interval']}: {iv} · {len(logs)} {t['t_logs']}"
+            note = f"<div class='tnote'><strong>{t['t_notes']}:</strong> {esc(tr['notes'])}</div>" if tr["notes"] else ""
+            rows_ = "".join(f"<tr><td class='nw'>{_fmt_dt(l['timestamp'], t)}</td><td><span class='pill k-treat'>{esc(l['log_type'])}</span></td>"
+                            f"<td>{esc(l['value_comment'] or '–')}</td></tr>" for l in logs)
+            table = (f"<table><thead><tr><th style='width:112px'>{t['time']}</th><th style='width:150px'>{t['t_type']}</th>"
+                     f"<th>{t['t_desc']}</th></tr></thead><tbody>{rows_}</tbody></table>") if logs else f"<p class='muted' style='margin:0'>{t['t_nologs']}</p>"
+            out += f"<div class='tcard'><h4>{esc(tr['title'])} {status}</h4><div class='tmeta'>{meta}</div>{note}{table}</div>"
+        return out
+
     def med_section(name):
         lst = meds_by_cat.get(name, [])
         h = f"<h3>{esc(t['kinds']['meds'])}</h3>"
@@ -394,7 +483,7 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         if not fields:
             return h + f"<p class='muted'>{t['no_values']}</p>"
         cards = ""
-        for f in fields:
+        for f in sorted(fields, key=lambda x: (p["id"], x["id"]) not in hvals):   # Felder mit Werten zuerst
             vs = hvals.get((p["id"], f["id"]), [])
             unit = f" {esc(f['unit'])}" if f["unit"] else ""
             title = f"<h4>{esc(f['name'])}{(' <span class=muted>(' + esc(f['unit']) + ')</span>') if f['unit'] else ''}</h4>"
@@ -405,15 +494,17 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
                 cards += f"<div class='fcard'>{title}<p class='muted' style='margin:2px 0'>{t['no_values']}</p>{extra}</div>"
                 continue
             nums = [v["value"] for v in vs]
+            pts_series = [(datetime.fromisoformat(v["ts"]), v["value"]) for v in vs]
             delta = nums[-1] - nums[0]
             stats = (f"<span>{t['count']}: {len(nums)}</span><span>{t['min']}: {_num(min(nums), lang)}</span>"
                      f"<span>{t['max']}: {_num(max(nums), lang)}</span>")
             if len(nums) > 1:
-                stats += f"<span>{t['change']}: {'+' if delta > 0 else ''}{_num(delta, lang)}{unit}</span>"
+                pct = f" ({'+' if delta > 0 else ''}{_num(delta / nums[0] * 100, lang)} %)" if nums[0] else ""
+                stats += f"<span>{t['change']}: {'+' if delta > 0 else ''}{_num(delta, lang)}{unit}{pct}</span>"
             trs = "".join(f"<tr><td class='nw'>{_fmt_dt(v['ts'], t)}</td><td class='nw'><strong>{_num(v['value'], lang)}</strong>{unit}</td>"
                           f"<td>{esc(v['note'] or '')}</td></tr>" for v in reversed(vs))
             cards += (f"<div class='fcard'>{title}<div><span class='big'>{_num(nums[-1], lang)}</span>{unit} "
-                      f"<span class='muted'>· {_fmt_dt(vs[-1]['ts'], t)}</span></div><div class='stats'>{stats}</div>{_spark(nums)}"
+                      f"<span class='muted'>· {_fmt_dt(vs[-1]['ts'], t)}</span></div><div class='stats'>{stats}</div>{_chart(pts_series, f['unit'] or '', lang, _band(f['name'], f['unit'] or '', p['species']))}"
                       + (f"<table><thead><tr><th>{t['time']}</th><th>{t['value']}</th><th>{t['note']}</th></tr></thead><tbody>{trs}</tbody></table>" if tables else "") + "</div>")
         return h + f"<div class='fields'>{cards}</div>"
 
@@ -475,6 +566,8 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
             sub.append(t["no_birthday"])
         tl = mixed and bool(food_kinds or "meds" in sel or "vomit" in sel)   # Zeitverlauf nur, wenn es neben Gesundheit etwas zu mischen gibt
         body = health_section(p, tables=not tl) if "health" in sel else ""   # Gesundheit direkt unter dem Tiernamen
+        if "treat" in sel:
+            body += treat_section(p)   # Behandlungen: Log-Einträge gruppiert unter dem jeweiligen Titel
         if tl:
             body += timeline_section(p)
         else:
@@ -498,6 +591,9 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
     for k in food_kinds:
         n_k = sum(len(v) for (n, kk), v in feeds.items() if kk == k)
         kpis.append((t["kinds"][k], n_k, _ent(n_k, t)))
+    if "treat" in sel:
+        n_t = sum(len(v) for v in treats_by_cat.values())
+        kpis.append((t["kinds"]["treat"], n_t, ""))
     if "meds" in sel:
         n_m = sum(len(v) for v in meds_by_cat.values())
         kpis.append((t["kinds"]["meds"], n_m, _ent(n_m, t)))

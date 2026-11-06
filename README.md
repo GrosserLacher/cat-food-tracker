@@ -51,6 +51,8 @@ A self-hosted, mobile-first web tracker (PWA) for seamless documentation and ana
 - **💊 Medication & supplements ("Präparate"):** Quickly log tablets, pastes, powders or flea treatment per animal with a dose and an optional "given together with feeding" flag. Entries show up in the history and the report; the catalog (with default doses) is maintained in the master data.
 - **🐾 Animal profiles:** *Settings → Animals* manages name, species, numeric position, birthday, avatar color, breed, color, sex/neutering status, markings and chip details (number, date, site).
 - **🚑 Medical & vaccination record:** *Health → Medical* (highlighted emergency box for allergies, chronic conditions, permanent medication), *Vaccines* (table with expiry status) and *Values* (charts and custom measurements). Vaccinations expiring within 30 days trigger a push reminder (30 days, 7 days, expiry day).
+- **📈 Trend charts:** *Health → Values* shows a real line chart (axes, dates, markers) for any measurement over 3/6/12 months or all time, with change, monthly trend, min/max, a normal-range band for temperature and hints for noticeable weight changes (≥ 5 %) or elevated temperature. The PDF report uses the same chart style.
+- **🩺 Treatment / post-op mode:** Start a treatment per animal (title, start time, reminder interval, vet instructions) under *Health → Medical*. While active, a highlighted banner at the top of the Health tab shows the running time and next reminder, with one-tap log entries (medication, wound check, food intake, general condition). Completing archives it; all entries are grouped under the treatment title in the report. Overdue intervals trigger a push reminder.
 - **🔔 Push reminders:** Feeding reminders plus birthday messages (14 days ahead and on the birthday at 09:00 local time, with varying texts).
 - **📑 Custom report:** Multi-select categories (food, snacks, drinks, vomiting, health), animals and period (default 30 days). Each animal's age is shown once (as of export day).
 - **🕒 Automatic Timestamps:** Date and time are recorded for every entry.
@@ -90,7 +92,7 @@ The easiest way to run the tracker is the prebuilt image from the GitHub Contain
    ```yaml
    services:
      cat-food-tracker:
-       image: ghcr.io/grosserlacher/cat-food-tracker:latest
+       image: ghcr.io/s0u7m4ch1n3/cat-food-tracker:latest
        container_name: cat-food-tracker
        restart: unless-stopped
        ports:
@@ -249,11 +251,7 @@ Database changes between versions are applied automatically on startup.
 docker compose pull
 docker compose up -d
 ```
-Or in case of building it:
-```bash
-docker compose pull
-docker compose up -d --build
-```
+
 Your data in `./data` is preserved.
 
 ---
