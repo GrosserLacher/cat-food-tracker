@@ -210,7 +210,7 @@ const burst=(x,y)=>{for(let i=0;i<8;i++){const s=document.createElement('span');
 const cchip=(c,on,a)=>`<button class="chip cat ${on?'on':''}" style="${cst(c)}" data-a="${a}" data-v="${esc(c.name)}"><i class="ini">${esc(c.name[0])}</i><span class="cn">${esc(c.name)}</span></button>`;
 const lines=l=>l.map(b=>`• ${hm(b.ts)} ${esc(b.food)}`).join('<br>');
 
-const vFeed=()=>{const m=M[S.man]||{f:[]},ks=Object.keys(S.sel);if(!CATS.length)return'<div class="card"><h2>🧸 Noch leer</h2><p>Lege unter <b>Einstellungen → Stammdaten</b> mindestens ein Tier an.</p></div>';return`
+const vFeed=()=>{const m=M[S.man]||{f:[]},ks=Object.keys(S.sel);if(!CATS.length)return'<div class="card"><h2>🧸 Noch leer</h2><p>Lege unter <b>Einstellungen → Tiere</b> mindestens ein Tier an.</p></div>';return`
 <div class="card"><h2>🐱 Wer hat gefressen?</h2><div class="row">${CATS.map(c=>cchip(c,c.name in S.sel,'cat')).join('')}</div>${grp()}</div>
 <div class="card"><h2>🥫 Welches Futter?</h2>
 <select id="man">${M.map((x,i)=>`<option value="${i}" ${i==S.man?'selected':''}>${esc(x.n)}</option>`).join('')}<option value="new" ${S.nm?'selected':''}>＋ Neuen Hersteller anlegen …</option></select>${S.nm||!M.length?`<div class="ed" style="margin:8px 0 0"><input type="text" id="nm" placeholder="Name des Herstellers"><button class="btn sm" data-a="addManF">OK</button><button class="x" data-a="cancelNew" aria-label="Abbrechen"></button></div>`:''}
@@ -229,9 +229,9 @@ const vVomit=()=>{const r=S.res;return`
 <button class="btn" data-a="saveV">Spuck-Ereignis speichern</button>
 ${r?`<div class="card" style="margin-top:14px"><h2>🔍 Ergebnis der Zuordnung</h2>${!rel(r.v)?`<div class="info" style="margin:0">ℹ️ Nicht futterrelevant – keine Mahlzeiten zugeordnet.</div>`:r.l.length?`<div class="warn" style="margin:0">⚠️ Gefüttert in den 12 h davor:<br>${lines(r.l)}</div>`:`<div class="info" style="margin:0">Keine Mahlzeit in den 12 h davor gefunden.</div>`}</div>`:''}`};
 
-const vHist=()=>{const it=[...B.map(b=>({k:'f',ts:b.ts,b})),...V.map(v=>({k:'v',ts:v.ts,v}))].filter(x=>S.filter=='all'||x.k==S.filter).filter(x=>!S.hc||S.hc=='Alle'||(x.k=='f'?S.hc in x.b.cats:x.v.cat==S.hc)).sort((a,b)=>b.ts-a.ts);
-return`<div class="row" style="margin-bottom:14px">${[['all','Alle'],['f','Fütterungen'],['v','Spuck-Ereignisse']].map(([k,l])=>`<button class="chip ${S.filter==k?'on':''}" data-a="filt" data-v="${k}" style="padding:7px 13px">${l}</button>`).join('')}</div>`+
-(it.map(x=>x.k=='f'?`<div class="card"><div class="top"><div><b>${esc(x.b.food)}</b><div class="mut">${KL[x.b.k||'food']} · ${fmt(x.ts)}</div></div><button class="x" data-a="del" data-k="f" data-id="${x.b.id}">🗑️</button></div>
+const vHist=()=>{const it=[...B.map(b=>({k:'f',ts:b.ts,b})),...V.map(v=>({k:'v',ts:v.ts,v})),...MG.filter(m=>!HD||m.cats.some(n=>CATS.some(c=>c.name==n))).map(m=>({k:'m',ts:m.ts,m}))].filter(x=>S.filter=='all'||x.k==S.filter).filter(x=>!S.hc||S.hc=='Alle'||(x.k=='f'?S.hc in x.b.cats:x.k=='m'?x.m.cats.includes(S.hc):x.v.cat==S.hc)).sort((a,b)=>b.ts-a.ts);
+return`<div class="row" style="margin-bottom:14px">${[['all','Alle'],['f','Fütterungen'],['m','Präparate'],['v','Spuck-Ereignisse']].map(([k,l])=>`<button class="chip ${S.filter==k?'on':''}" data-a="filt" data-v="${k}" style="padding:7px 13px">${l}</button>`).join('')}</div>`+
+(it.map(x=>x.k=='m'?MH(x.m):x.k=='f'?`<div class="card"><div class="top"><div><b>${esc(x.b.food)}</b><div class="mut">${KL[x.b.k||'food']} · ${fmt(x.ts)}</div></div><button class="x" data-a="del" data-k="f" data-id="${x.b.id}">🗑️</button></div>
 <div class="row" style="margin-top:8px">${Object.entries(x.b.cats).map(([c,r])=>`<span class="pill r${rc(r)}">${esc(c)} · ${esc(R[r].e+' '+R[r].l)}</span>`).join('')}</div>${x.b.note?`<div class="mut" style="margin-top:6px">${esc(x.b.note)}</div>`:''}</div>`:
 (v=>{const l=rel(v)?lk(v):[];return`<div class="card"><div class="top"><div><b>${VT[v.type].e} ${esc(VT[v.type].l)}</b> · ${esc(v.cat)}<div class="mut">${fmt(v.ts)}${v.note?' · '+esc(v.note):''}</div></div><button class="x" data-a="del" data-k="v" data-id="${v.id}">🗑️</button></div>
 ${v.img?`<img class="thumb" src="${v.img}" alt="">`:''}${rel(v)?(l.length?`<div class="warn">⚠️ Mahlzeiten in den 12 h davor:<br>${lines(l)}</div>`:`<div class="info">Keine Mahlzeit in den 12 h davor.</div>`):''}</div>`})(x.v)).join('')||'<p class="mut">Noch keine Einträge</p>')};
@@ -245,17 +245,15 @@ const vStats=()=>{const Q=rank(),n=Q.reduce((a,x)=>a+x.n,0),avg=n?Q.reduce((a,x)
 <div class="card"><h2>📤 Export</h2><div class="grid2"><button class="btn gh" data-a="expCsv">CSV exportieren</button><button class="btn gh" data-a="expPdf">PDF-Bericht</button></div></div>`};
 
 const vData=()=>`
-<div class="card"><h2>🐱 Katzen · ${CATS.length}</h2>
-${CATS.map(c=>`<div class="pet"><div class="ed"><button class="av avb" data-a="sp" data-i="${c.id}" style="${cst(c)}" title="Tierart wechseln (Katze/Hund)">${esc(c.name[0])}</button><input type="text" data-e="cat" data-i="${c.id}" value="${esc(c.name)}"></div>
-<div class="ed tools"><label class="bd"><span class="mut">Geburtstag</span><input type="date" data-e="bday" data-i="${c.id}" value="${HF.birthdays[c.id]||''}" max="${nowIso().slice(0,10)}"></label><input type="color" class="cpick" value="${ccol(c)}" data-ccol="${c.id}" title="Farbe des Avatars"><button class="mv" data-a="mvu" data-i="${c.id}" aria-label="Nach oben">▲</button><button class="mv" data-a="mvd" data-i="${c.id}" aria-label="Nach unten">▼</button><button class="x" data-a="delCat" data-i="${c.id}">🗑️</button></div></div>`).join('')}
-<div class="pet"><div class="ed"><span class="av">+</span><input type="text" id="ncat" placeholder="Neues Tier …"></div>
-<div class="ed tools"><label class="bd"><span class="mut">Geburtstag (optional)</span><input type="date" id="nbday" max="${nowIso().slice(0,10)}"></label><button class="btn sm" data-a="addCat">Katze</button><button class="btn sm gh" data-a="addDog">Hund</button></div></div>
-<p class="mut" style="margin:0">Tippe auf den Avatar, um zwischen Katze und Hund zu wechseln. Mit ▲▼ änderst du die Reihenfolge – sie gilt überall. Umbenennen ändert auch die Historie, Löschen entfernt nur aus der Auswahl.</p></div>
 <div class="card"><h2>🏷️ Hersteller & Sorten</h2>
 ${M.map((m,i)=>`<div class="man"><div class="ed"><input type="text" class="b" data-e="man" data-i="${i}" value="${esc(m.n)}"><button class="x" data-a="delMan" data-i="${i}">🗑️</button></div>
 ${m.f.map((f,j)=>`<div class="ed sub"><span class="mut">–</span><input type="text" data-e="food" data-i="${i}" data-j="${j}" value="${esc(f)}"><button class="x" data-a="delFood" data-i="${i}" data-j="${j}">✕</button></div>`).join('')}
 <div class="ed sub" style="margin-bottom:0"><span class="mut">+</span><input type="text" id="nf${i}" placeholder="Neue Sorte …"><button class="btn sm gh" data-a="addFoodM" data-i="${i}">OK</button></div></div>`).join('')}
 <div class="ed"><span class="av">H</span><input type="text" id="nman" placeholder="Neuer Hersteller …"><button class="btn sm" data-a="addMan">Los</button></div></div>
+<div class="card"><h2>💊 Präparate · ${MED.length}</h2>
+${MED.map(m=>`<div class="man2"><div class="ed"><input type="text" class="b" data-e="medn" data-i="${m.id}" value="${esc(m.n)}"><button class="x" data-a="delMed" data-i="${m.id}">🗑️</button></div><div class="ed sub"><span class="mut">Dosis</span><input type="text" data-e="medd" data-i="${m.id}" value="${esc(m.d)}" placeholder="Standarddosis, z. B. 1 Tablette"></div></div>`).join('')}
+<div class="pet"><div class="ed"><span class="av">P</span><input type="text" id="nmeds" placeholder="Neues Präparat …"></div><div class="ed tools"><input type="text" id="nmedsd" placeholder="Standarddosis, z. B. 1 Tablette" style="flex:1 1 150px"><button class="btn sm" data-a="addMedS">Los</button></div></div>
+<p class="mut" style="margin:0">Die Standarddosis wird beim Eintragen vorausgewählt und kann dort angepasst werden. Löschen entfernt das Präparat nur aus der Auswahl; bisherige Einträge bleiben im Verlauf.</p></div>
 <div class="card"><h2>⭐ Bewertungsstufen</h2>${RK().map(r=>`<div class="ed"><input type="text" class="em" data-e="re" data-i="${r}" value="${R[r].e}"><input type="text" data-e="rl" data-i="${r}" value="${esc(R[r].l)}"></div>`).join('')}<div class="row" style="margin-bottom:10px"><button class="btn sm gh" data-a="addR">＋ Stufe hinzufügen</button>${NR()>2?`<button class="btn sm gh" data-a="delR">Oberste Stufe entfernen</button>`:''}</div><p class="mut" style="margin:0">Oben = beste Bewertung (${NR()}), unten = schlechteste (1).</p></div>
 <div class="card"><h2>🤮 Spuck-Kategorien</h2>${Object.entries(VT).filter(([k,t])=>!t.hid).map(([k,t])=>`<div class="ed"><input type="text" class="em" data-e="ve" data-k="${k}" value="${t.e}"><input type="text" data-e="vl" data-k="${k}" value="${esc(t.l)}"><label class="sw" title="futterrelevant"><input type="checkbox" data-e="vr" data-k="${k}" ${t.r?'checked':''}><i></i></label>${k[0]=='c'?`<button class="x" data-a="delVT" data-k="${k}"></button>`:''}</div>`).join('')}<div class="ed"><input type="text" class="em" id="nve" placeholder="🔹"><input type="text" id="nvt" placeholder="Neue Kategorie …"><button class="btn sm" data-a="addVT">Los</button></div><p class="mut" style="margin:0">Schalter an = futterrelevant (zählt für die 12-h-Zuordnung).</p></div>`;
 
@@ -287,9 +285,9 @@ ${CK.map(([k,l])=>`<label class="cp"><span>${l}</span><input type="color" data-c
 <div class="card"><h2>Header-Tier</h2><p class="mut" style="margin-top:0">Wähle ein oder mehrere Tiere. Beim Öffnen wechselt die App zufällig zwischen ihnen.</p>${artChips()}${hdr()[1]=='none'?'':`<div class="row" style="margin-top:14px;justify-content:space-between">${[['sleepy','Morgens'],['wake','Tagsüber'],['happy','Abends'],['sleep','Nachts']].map(([s,l])=>`<div class="cpvw"><div class="cpv" data-s="${s}"></div>${l}</div>`).join('')}</div>`}</div>
 <button class="btn gh" data-a="dreset">Design zurücksetzen</button>`};
 function render(){const h=new Date().getHours();const gr=greet();$('#hi').textContent=gr[0];$('#sub').textContent=gr[1];$('#hav').innerHTML=CATS.map(c=>`<span class="av" style="${cst(c)}" title="${esc(c.name)}">${esc(c.name[0])}</span>`).join('');
-const a=$('#app');a.innerHTML={feed:vFeed,vomit:vVomit,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,report:vReport,account:()=>'',health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
+const a=$('#app');a.innerHTML={feed:()=>S.pm?vMeds():vFeed(),vomit:vVomit,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,report:vReport,account:()=>'',pets:vPets,health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
 post();if(S.in){a.classList.add('in');setTimeout(()=>a.classList.remove('in'),600);S.in=0}
-$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Spucken'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&(S.tab=='design'||S.tab=='account'))||(k=='hist'&&(S.tab=='stats'||S.tab=='export'||S.tab=='report'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
+$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Spucken'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&(S.tab=='design'||S.tab=='account'||S.tab=='pets'))||(k=='hist'&&(S.tab=='stats'||S.tab=='export'||S.tab=='report'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
 
 const val=s=>{const e=$(s);return e?e.value.trim():''};
 const ren=(o,n)=>{B.forEach(b=>{if(o in b.cats){b.cats[n]=b.cats[o];delete b.cats[o]}});V.forEach(v=>{if(v.cat==o)v.cat=n});if(o in S.sel){S.sel[n]=S.sel[o];delete S.sel[o]}if(S.vcat==o)S.vcat=n;if(S.sc==o)S.sc=n};
@@ -312,7 +310,7 @@ delFood:d=>{M[d.i].f.splice(d.j,1);S.food=0}};
 A.tclose=()=>$('#toast').classList.remove('show');
 document.body.insertAdjacentHTML('beforeend','<div id="dlg" hidden></div>');
 let PD=null;
-const CONF={del:()=>['Eintrag löschen?','Dieser Eintrag wird endgültig gelöscht.'],delCat:d=>{const c=CATS.find(x=>x.id==d.i);return['Katze entfernen?',`„${c?c.name:''}“ wird aus der Auswahl entfernt. Die Historie bleibt erhalten.`]},delMan:d=>['Hersteller löschen?',`„${M[d.i].n}“ und alle ${M[d.i].f.length} zugehörigen Sorten werden aus der Auswahl gelöscht.`],delFood:d=>['Sorte löschen?',`„${M[d.i].f[d.j]}“ wird aus der Auswahl gelöscht.`]};
+const CONF={del:()=>['Eintrag löschen?','Dieser Eintrag wird endgültig gelöscht.'],delCat:d=>{const c=CATS.find(x=>x.id==d.i);return['Katze entfernen?',`„${c?c.name:''}“ wird aus der Auswahl entfernt. Die Historie bleibt erhalten.`]},delMan:d=>['Hersteller löschen?',`„${M[d.i].n}“ und alle ${M[d.i].f.length} zugehörigen Sorten werden aus der Auswahl gelöscht.`],delMed:d=>{const m=MED.find(x=>x.id==d.i);return['Präparat löschen?',`„${m?m.n:''}“ wird aus der Auswahl entfernt. Bisherige Einträge behalten ihren Namen.`]},delFood:d=>['Sorte löschen?',`„${M[d.i].f[d.j]}“ wird aus der Auswahl gelöscht.`]};
 function ask(a,d){PD={a,d};const[t,m]=CONF[a](d),el=$('#dlg');el.innerHTML=`<div class="box" role="alertdialog" aria-modal="true"><h3>${esc(t)}</h3><p>${esc(m)}</p><div class="row"><button class="btn gh" data-a="dno">Abbrechen</button><button class="btn red" data-a="dyes">Ja, löschen</button></div></div>`;el.hidden=false;el.querySelector('[data-a=dno]').focus()}
 A.dno=()=>{$('#dlg').hidden=true;PD=null};A.dyes=()=>{const p=PD;$('#dlg').hidden=true;PD=null;if(p)A[p.a](p.d)};
 $('#dlg').addEventListener('click',e=>{if(e.target.id=='dlg')A.dno()});document.addEventListener('keydown',e=>{if(e.key=='Escape')A.dno()});
@@ -331,7 +329,7 @@ const catState=()=>{const h=new Date().getHours();return h<5||h>=22?'sleep':h<11
 let NEWSP='cat',HI=null;const DOGV=';--et:.05em;--ew:.5em;--eh:.9em;--bl:0;--bb:0;--eb:var(--ib);--er:.15em .15em .5em .5em;--el:-.28em;--rot:10deg';
 const CAT={food:M,snack:[{n:'Dentabits',f:['Dental Sticks','Käse-Happen']},{n:'Leckerli & Co.',f:['Fischfilet','Hühnchen-Chips']}],drink:[{n:'Standard',f:['Wasser']},{n:'Eigenmarke',f:['Katzenmilch']}]},KL={food:'Futter',snack:'Snack',drink:'Getränk'};
 const NR=()=>Object.keys(R).length,RK=()=>Object.keys(R).map(Number).sort((a,b)=>b-a),rc=v=>v>NR()*2/3?3:v>NR()/3?2:1;
-const KC=()=>`<div class="row" style="margin-bottom:14px">${[['food','Futter'],['snack','Snacks'],['drink','Getränke']].map(([k,l])=>`<button class="chip ${S.kind==k?'on':''}" data-a="kind" data-v="${k}">${l}</button>`).join('')}</div>`;
+const KC=m=>`<div class="row" style="margin-bottom:14px">${[['food','Futter'],['snack','Snacks'],['drink','Getränke']].map(([k,l])=>`<button class="chip ${!(m&&S.pm)&&S.kind==k?'on':''}" data-a="kind" data-v="${k}">${l}</button>`).join('')}${m?`<button class="chip ${S.pm?'on':''}" data-a="meds">Präparate</button>`:''}</div>`;
 const ensureDrink=()=>{if(!CAT.drink.some(m=>m.f.includes(S.pr.drink)))CAT.drink.push({n:'Standard',f:[S.pr.drink]})};
 const selAll=()=>S.pr.autoAll?Object.fromEntries(CATS.map(c=>[c.name,NR()])):{};
 const mvA=(id,dx)=>{const i=CATS.findIndex(c=>c.id==id),j=i+dx;if(j<0||j>=CATS.length)return;[CATS[i],CATS[j]]=[CATS[j],CATS[i]]};
@@ -340,7 +338,7 @@ const PRO=()=>`<div class="card"><h2>Eigenschaften</h2><div class="cp"><span>All
 const vExport=()=>`<div class="card"><h2>Datensicherung</h2><p class="mut" style="margin-top:0">Lädt eine vollständige Sicherung der Datenbank (.db) herunter: Tiere, Einträge, Gesundheitsdaten, Einstellungen und Benutzerkonten. Hochgeladene Fotos liegen im Ordner data/uploads und werden separat gesichert.</p>${ME&&ME.is_admin?'<div class="grid2"><button class="btn" data-a="dbdump">Datenbank sichern</button><button class="btn gh" data-a="expCsv">CSV exportieren</button></div>':'<p class="mut" style="margin:0">Die Datensicherung ist nur für Administratoren verfügbar.</p>'}</div>`;
 const hdr=()=>{const s=(CU.hs&&CU.hs.length?CU.hs:[CU.cat||0]).filter(i=>ART[i]),l=s.length?s:[0];if(!l.includes(HI))HI=l[Math.random()*l.length|0];return ART[HI]};
 function post2(a){const hd=t=>[...a.querySelectorAll('h2')].find(h=>h.textContent.startsWith(t));
-if(S.tab=='feed'){const h=hd('Welches Futter');if(h)h.textContent=S.kind=='snack'?'Welcher Snack?':S.kind=='drink'?'Welches Getränk?':'Welches Futter?';a.insertAdjacentHTML('afterbegin',KC()+(S.kind=='drink'?`<div class="card"><div class="top"><div><b>Standardgetränk: ${esc(S.pr.drink)}</b><div class="mut">Immer verfügbar – ein Tipp trägt es für die gewählten Tiere ein.</div></div><button class="btn sm" data-a="stdDrink">Geben</button></div></div>`:''))}
+if(S.tab=='feed'){const h=hd('Welches Futter');if(h)h.textContent=S.kind=='snack'?'Welcher Snack?':S.kind=='drink'?'Welches Getränk?':'Welches Futter?';a.insertAdjacentHTML('afterbegin',KC(1)+(!S.pm&&S.kind=='drink'?`<div class="card"><div class="top"><div><b>Standardgetränk: ${esc(S.pr.drink)}</b><div class="mut">Immer verfügbar – ein Tipp trägt es für die gewählten Tiere ein.</div></div><button class="btn sm" data-a="stdDrink">Geben</button></div></div>`:''))}
 if(S.tab=='stats')a.insertAdjacentHTML('afterbegin',KC());
 if(S.tab=='data'){const h=hd('Hersteller');if(h)h.insertAdjacentHTML('afterend',KC());const c=hd('Katzen');if(c)c.textContent='Tiere · '+CATS.length;a.insertAdjacentHTML('afterbegin',PRO())}}
 A.kind=d=>{S.kind=d.v;M=CAT[d.v];S.man=0;S.food=0;S.nm=0;S.nf=0;ensureDrink();if(d.v=='drink')M.forEach((m,i)=>m.f.forEach((f,j)=>{if(f==S.pr.drink){S.man=i;S.food=j}}))};
@@ -366,8 +364,8 @@ const EYE={h:`<path d='M38 52q5-7 11 0M71 52q5-7 11 0' fill='none' stroke='#5a3a
 const STR=c=>`<path d='M52 20v10M60 18v11M68 20v10' stroke='${c}' stroke-width='3' stroke-linecap='round'/>`;
 const mkCat=(fur,ear,eye,nose='#d9674a',ink='#5a3a2e')=>`url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 90'><path d='M20 90V46C20 34 24 24 30 18L28 4L46 14C54 12 66 12 74 14L92 4L90 18C96 24 100 34 100 46V90Z' fill='${fur}'/><path d='M33 14l1 6-5 3zM87 14l-1 6 5 3z' fill='${ear}'/>${eye}<path d='M55 61h10l-5 6z' fill='${nose}'/><path d='M60 67q-3 5-9 3M60 67q3 5 9 3' fill='none' stroke='${ink}' stroke-width='2.4' stroke-linecap='round'/><path d='M22 58l-14-3M22 64l-14 3M98 58l14-3M98 64l14 3' stroke='${ink}' stroke-width='1.8' stroke-linecap='round'/></svg>`)}")`;
 const ARTS=[['Cremefarben',mkCat('#fff1e4','#f3b9a6',EYE.h)],['Schwarz',mkCat('#2b2b33','#6a5560',EYE.o,'#e58a8a','#cfc6cf')],['Grau getigert',mkCat('#b7bcc6','#e8b5b5',EYE.o+STR('#8a909c'),'#e58a8a')],['Orange',mkCat('#f2a65a','#f7c9a0',EYE.h+STR('#d98338'))],['Schlafend',mkCat('#fff1e4','#f3b9a6',EYE.s)],['Grau mit weißer Schnauze',mkCat('#8d939d','#e3b4b8',EYE.o+`<path d='M54 51h12l4 11H50z' fill='#fff'/><ellipse cx='60' cy='66' rx='15' ry='10' fill='#fff'/>`,'#e58a8a','#5b5f68')],['Snow Lynx',mkCat('#f7f0e6','#d6b48f',OE('#5aa9e6')+STR('#b8926d')+`<path d='M30 56l8 2M30 62l8-1M90 56l-8 2M90 62l-8-1' stroke='#b8926d' stroke-width='2.4' stroke-linecap='round'/>`,'#e9a0a0','#7a5a42')],['Spotted Tabby (Braun)',mkCat('#9a6a3f','#e7b9a0',EYE.o+`<ellipse cx='60' cy='66' rx='14' ry='9' fill='#e4c7a3'/><g fill='#5b3a22'><circle cx='46' cy='30' r='2.8'/><circle cx='60' cy='25' r='2.8'/><circle cx='74' cy='30' r='2.8'/><circle cx='30' cy='46' r='2.6'/><circle cx='90' cy='46' r='2.6'/><circle cx='32' cy='66' r='2.6'/><circle cx='88' cy='66' r='2.6'/><circle cx='38' cy='76' r='2.6'/><circle cx='82' cy='76' r='2.6'/></g>`,'#c0705a','#4a2e1b')],['Keine','none']];
-function post(){const a=$('#app');post2(a);a.querySelectorAll('.cpv').forEach(e=>{const R0=hdr()[1];if(R0!='none')e.style.backgroundImage=R0[e.dataset.s]});const SUB=S.tab=='data'||S.tab=='design'||S.tab=='account'?[['data','Stammdaten'],['design','Design'],['account','Konto']]:['hist','stats','export','report'].includes(S.tab)?[['hist','Verlauf'],['stats','Auswertung'],['report','Bericht'],['export','Export']]:null;if(SUB)a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:14px">${SUB.map(([k,l])=>`<button class="chip ${S.tab==k?'on':''}" data-a="tab" data-v="${k}">${l}</button>`).join('')}</div>`);
-a.querySelectorAll('.card').forEach(c=>{const h=c.querySelector('h2'),t=h?h.textContent:'';if(t=='Export'&&S.tab=='stats'){c.remove();return}const k=S.tab=='data'&&['Hersteller','Bewertungsstufen','Spuck-Kategorien'].find(x=>t.startsWith(x));if(!k)return;c.classList.add('dt');c.classList.toggle('closed',!S.o[k]);h.onclick=()=>{S.o[k]=!S.o[k];c.classList.toggle('closed',!S.o[k])}});
+function post(){const a=$('#app');post2(a);a.querySelectorAll('.cpv').forEach(e=>{const R0=hdr()[1];if(R0!='none')e.style.backgroundImage=R0[e.dataset.s]});const SUB=S.tab=='data'||S.tab=='design'||S.tab=='account'||S.tab=='pets'?[['data','Stammdaten'],['pets','Tiere'],['design','Design'],['account','Konto']]:['hist','stats','export','report'].includes(S.tab)?[['hist','Verlauf'],['stats','Auswertung'],['report','Bericht'],['export','Export']]:null;if(SUB)a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:14px">${SUB.map(([k,l])=>`<button class="chip ${S.tab==k?'on':''}" data-a="tab" data-v="${k}">${l}</button>`).join('')}</div>`);
+a.querySelectorAll('.card').forEach(c=>{const h=c.querySelector('h2'),t=h?h.textContent:'';if(t=='Export'&&S.tab=='stats'){c.remove();return}const k=S.tab=='data'&&['Hersteller','Präparate','Bewertungsstufen','Spuck-Kategorien'].find(x=>t.startsWith(x));if(!k)return;c.classList.add('dt');c.classList.toggle('closed',!S.o[k]);h.onclick=()=>{S.o[k]=!S.o[k];c.classList.toggle('closed',!S.o[k])}});
 if(S.tab=='data')a.querySelectorAll('.man').forEach((m,i)=>{m.classList.toggle('closed',!S.o['m'+i]);const r=m.querySelector('.ed'),b=document.createElement('button');b.className='car';b.setAttribute('aria-label','Auf- oder zuklappen');b.onclick=()=>{S.o['m'+i]=!S.o['m'+i];m.classList.toggle('closed',!S.o['m'+i])};r.insertBefore(b,r.firstChild)})}A.dreset=()=>{CU={light:{},dark:{},fh:'',fb:'',fs:15};applyTheme();save();toast('Design zurückgesetzt')};
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.font){CU[t.dataset.font]=t.value;applyTheme();save()}});
 const E={pall:t=>{S.pr.autoAll=t.checked?1:0},pdrink:t=>{S.pr.drink=t.value;ensureDrink()},
@@ -390,7 +388,7 @@ async function API(m,u,b,f){const o={method:m,credentials:'same-origin',headers:
 const r=await fetch(u,o);if(r.status==401&&u!='/api/login'){showLogin(false);throw new Error('401')}
 if(!r.ok){let d='Fehler '+r.status;try{d=(await r.json()).detail||d}catch(e){}toast(d);throw new Error(d)}return r.json()}
 async function load(){const g=u=>API('GET',u);
-const [an,fo,sn,dr,fd,vm,vt,rl,dd]=await Promise.all([g('/api/animals'),g('/api/catalog?kind=food'),g('/api/catalog?kind=snack'),g('/api/catalog?kind=drink'),g('/api/feedings?limit=5000'),g('/api/vomits?limit=2000'),g('/api/vomit-types?include_hidden=true'),g('/api/rating-levels'),g('/api/default-drink')]);
+const [an,fo,sn,dr,fd,vm,vt,rl,dd,md,ml]=await Promise.all([g('/api/animals'),g('/api/catalog?kind=food'),g('/api/catalog?kind=snack'),g('/api/catalog?kind=drink'),g('/api/feedings?limit=5000'),g('/api/vomits?limit=2000'),g('/api/vomit-types?include_hidden=true'),g('/api/rating-levels'),g('/api/default-drink'),g('/api/meds'),g('/api/med-logs?limit=5000')]);
 CATS=an.map((a,i)=>({id:a.id,name:a.name,sp:a.species,h:HU[i%6],f:FC[i%6],col:DC[i%6]}));
 const mp=l=>l.map(m=>({id:m.id,n:m.name,f:m.foods.map(x=>x.name),fi:m.foods.map(x=>x.id)}));
 CAT.food=mp(fo);CAT.snack=mp(sn);CAT.drink=mp(dr);M=CAT[S.kind];
@@ -398,7 +396,9 @@ const gm={};fd.forEach(f=>{const k=f.batch_id||'s'+f.id;(gm[k]=gm[k]||{id:f.batc
 V=vm.map(x=>({id:x.id,ts:new Date(x.timestamp).getTime(),cat:x.cat_name,type:x.vomit_type||'food',note:x.notes||'',img:x.image_path}));
 R={};rl.forEach(x=>{R[x.score]={l:x.label,e:x.emoji}});
 VT={};vt.forEach(x=>{VT[x.key]={e:x.emoji,l:x.label,r:x.relevant?1:0,hid:x.hidden?1:0}});
-S.pr.drink=dd.name;if(S.man>=M.length)S.man=0;if(M[S.man]&&S.food>=M[S.man].f.length)S.food=0;
+S.pr.drink=dd.name;
+MED=md.map(x=>({id:x.id,n:x.name,d:x.dose||''}));const gm2={};ml.forEach(x=>{(gm2[x.batch_id]=gm2[x.batch_id]||{id:x.batch_id,ts:new Date(x.timestamp).getTime(),med:x.med_name,dose:x.dose||'',wf:x.with_food,note:x.notes||'',cats:[]}).cats.push(x.cat_name)});MG=Object.values(gm2);
+if(S.med!=null&&!MED.some(m=>m.id==S.med))S.med=null;Object.keys(S.msel).forEach(k=>{if(!CATS.some(c=>c.name==k))delete S.msel[k]});if(S.man>=M.length)S.man=0;if(M[S.man]&&S.food>=M[S.man].f.length)S.food=0;
 if(S.vcat!='Unbekannt'&&!CATS.some(c=>c.name==S.vcat))S.vcat=CATS[0]?CATS[0].name:'Unbekannt';
 Object.keys(S.sel).forEach(k=>{if(!CATS.some(c=>c.name==k))delete S.sel[k]})}
 const syncR=()=>API('PUT','/api/rating-levels',Object.entries(R).map(([s,x])=>({score:+s,label:x.l,emoji:x.e})));
@@ -409,7 +409,7 @@ save=()=>{clearTimeout(SAVE_T);SAVE_T=setTimeout(()=>API('PUT','/api/prefs',{ui:
 Object.assign(A,{
 saveF:T(async()=>{const m=M[S.man];if(!m||m.fi[S.food]===undefined||!Object.keys(S.sel).length)return;const cr={...S.sel};await API('POST','/api/feedings',{cat_ratings:cr,manufacturer_id:m.id,food_id:m.fi[S.food],notes:S.note,timestamp:S.ft||nowIso(),kind:S.kind});S.sel=selAll();S.note='';S.ft='';return()=>toast(fbFeed(cr))}),
 saveV:T(async()=>{const fd=new FormData();fd.append('cat_name',S.vcat);fd.append('vomit_type',S.vtype);fd.append('timestamp',S.vt||nowIso());fd.append('notes',S.vnote);if(S.vfile)fd.append('image',S.vfile);const r=await API('POST','/api/vomits',undefined,fd);S.vnote='';S.vimg=null;S.vfile=null;S.vt='';return()=>{const v=V.find(x=>x.id==r.id);if(v){S.res={v,l:lk(v)};toast(fbVomit(v))}}}),
-del:T(async d=>{await API('DELETE',d.k=='f'?'/api/feedings/batch/'+d.id:'/api/vomits/'+d.id);toast('Gel\u00f6scht')}),
+del:T(async d=>{await API('DELETE',d.k=='f'?'/api/feedings/batch/'+d.id:d.k=='m'?'/api/med-logs/batch/'+d.id:'/api/vomits/'+d.id);toast('Gel\u00f6scht')}),
 addCat:T(async()=>{const v=val('#ncat');if(!v)return;await API('POST','/api/animals',{name:v,species:NEWSP,birthday:val('#nbday')||null});return()=>{if(S.pr.autoAll)S.sel[v]=NR();toast(pick(nameHint).replace('X',v))}}),
 delCat:T(async d=>{const c=CATS.find(x=>x.id==d.i);await API('DELETE','/api/cats/'+d.i);delete S.sel[c.name];if(S.vcat==c.name)S.vcat='Unbekannt';S.sc='Alle'}),
 sp:T(async d=>{const c=CATS.find(x=>x.id==d.i),n=c.sp=='dog'?'cat':'dog';await API('PUT','/api/animals/'+d.i,{species:n});toast(c.name+(n=='dog'?' ist jetzt ein Hund \ud83d\udc36':' ist jetzt eine Katze \ud83d\udc31'))}),
@@ -472,7 +472,7 @@ a.insertAdjacentHTML('beforeend',`<div class="card"><h2>Unvertr\u00e4glichkeits-
 const _p3=post2;
 post2=function(a){_p3(a);
 if(S.tab=='feed'){const h=[...a.querySelectorAll('h2')].find(x=>x.textContent.startsWith('Notiz'));if(h)h.parentElement.insertAdjacentHTML('beforeend',`<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="ft" value="${S.ft||nowIso()}">`);
-if(S.kind=='food'){const r=rotation();if(r.length&&a.firstElementChild)a.firstElementChild.insertAdjacentHTML('afterend',`<div class="card"><h2>Rotations-Vorschlag: Was gibt\u2019s heute?</h2><p class="mut" style="margin-top:0">Gut bewertet, vertr\u00e4glich und am l\u00e4ngsten nicht im Napf</p><div class="row">${r.map(x=>`<button class="chip" data-a="sug" data-v="${esc(x.k)}" style="padding:7px 12px;font-size:13px">${esc(x.k)} \u00b7 \u00d8 ${x.avg.toFixed(1)} \u00b7 ${x.days?'vor '+x.days+' d':'heute'}</button>`).join('')}</div></div>`)}}
+if(!S.pm&&S.kind=='food'){const r=rotation();if(r.length&&a.firstElementChild)a.firstElementChild.insertAdjacentHTML('afterend',`<div class="card"><h2>Rotations-Vorschlag: Was gibt\u2019s heute?</h2><p class="mut" style="margin-top:0">Gut bewertet, vertr\u00e4glich und am l\u00e4ngsten nicht im Napf</p><div class="row">${r.map(x=>`<button class="chip" data-a="sug" data-v="${esc(x.k)}" style="padding:7px 12px;font-size:13px">${esc(x.k)} \u00b7 \u00d8 ${x.avg.toFixed(1)} \u00b7 ${x.days?'vor '+x.days+' d':'heute'}</button>`).join('')}</div></div>`)}}
 if(S.tab=='vomit'){const h=[...a.querySelectorAll('h2')].find(x=>x.textContent.startsWith('Foto'));if(h)h.parentElement.insertAdjacentHTML('beforeend',`<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="vt" value="${S.vt||nowIso()}">`)}
 if(S.tab=='stats')statsExtra(a)};
 /* ===== Sprache (Texte in /static/i18n.js) ===== */
@@ -526,8 +526,9 @@ const _p4=post2;
 post2=function(a){_p4(a);
 if(['hist','stats','vomit'].includes(S.tab))a.insertAdjacentHTML('afterbegin',`<div class="cp" style="border:0;padding:0 0 10px"><span>Gelöschte Tiere ausblenden</span><label class="sw"><input type="checkbox" data-e="phd" ${HD?'checked':''}><i></i></label></div>`);
 if(S.tab=='hist'){a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:12px"><button class="chip ${!S.hc||S.hc=='Alle'?'on':''}" data-a="hfilt" data-v="Alle" style="padding:7px 13px">Alle Tiere</button>${CATS.map(c=>cchip(c,S.hc==c.name,'hfilt')).join('')}</div>`);
-a.querySelectorAll('button[data-a=del][data-k]').forEach(btn=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:6px;align-items:center';const e=document.createElement('button');e.className='mv';e.dataset.a=btn.dataset.k=='f'?'edit':'vedit';e.dataset.id=btn.dataset.id;e.setAttribute('aria-label','Bearbeiten');e.textContent='✎';btn.replaceWith(w);w.append(e,btn)})}
-if(S.tab=='feed')a.insertAdjacentHTML('beforeend',previewCard());
+a.querySelectorAll('button[data-a=del][data-k]').forEach(btn=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:6px;align-items:center';const e=document.createElement('button');e.className='mv';e.dataset.a=btn.dataset.k=='f'?'edit':btn.dataset.k=='m'?'medit':'vedit';e.dataset.id=btn.dataset.id;e.setAttribute('aria-label','Bearbeiten');e.textContent='✎';btn.replaceWith(w);w.append(e,btn)})}
+if(S.tab=='feed'&&!S.pm)a.insertAdjacentHTML('beforeend',previewCard());
+if(S.tab=='feed'&&S.pm&&MG.length)a.insertAdjacentHTML('beforeend',`<div class="card"><div class="top"><h2 style="margin:0">Zuletzt gegeben</h2><button class="chip" data-a="tab" data-v="hist" style="padding:7px 12px;font-size:13px">Alle im Verlauf ansehen →</button></div>${[...MG].sort((a,b)=>b.ts-a.ts).slice(0,3).map(m=>`<div style="margin-top:10px"><b>💊 ${esc(m.med)}</b>${m.dose?' · '+esc(m.dose):''}<div class="mut">${esc(m.cats.join(', '))} · ${fmt(m.ts)}</div></div>`).join('')}</div>`);
 if(S.tab=='design'){const r=a.querySelector('[data-a=dreset]');if(r)r.insertAdjacentHTML('beforebegin',langCard()+themeCard())}};
 
 /* ===== Layout: Tiere/Bewertungen nutzen die volle Breite, werden aber nie gequetscht ===== */
@@ -548,8 +549,8 @@ document.head.insertAdjacentHTML('beforeend','<style>'+
 'input[type=date]:focus,input[type=number]:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}'+
 '</style>');
 /* ===== Gesundheitsdaten ===== */
-let HF={fields:[],birthdays:{}},HV=[];
-const _load3=load;load=async function(){await _load3();try{const [o,v]=await Promise.all([API('GET','/api/health/overview'),API('GET','/api/health/values?limit=5000')]);HF=o;HV=v}catch(e){}};
+let HF={fields:[],birthdays:{}},HV=[],PRF={},VAC=[];
+const _load3=load;load=async function(){await _load3();try{const [o,v,pr,vc]=await Promise.all([API('GET','/api/health/overview'),API('GET','/api/health/values?limit=5000'),API('GET','/api/animals/profiles'),API('GET','/api/health/vaccinations')]);HF=o;HV=v;PRF={};pr.forEach(x=>{PRF[x.id]=x});VAC=vc}catch(e){}};
 const nf=x=>Number(x).toLocaleString(LOCALE(),{maximumFractionDigits:2});
 const ageText=b=>{if(!b)return'';const d=new Date(b+'T00:00'),n=new Date();let y=n.getFullYear()-d.getFullYear(),m=n.getMonth()-d.getMonth();if(n.getDate()<d.getDate())m--;if(m<0){y--;m+=12}if(y<0)return'';
 if(y>0)return y+(y==1?' Jahr':' Jahre')+(m?', '+m+(m==1?' Monat':' Monate'):'');if(m>0)return m+(m==1?' Monat':' Monate');const t=Math.max(0,Math.floor((n-d)/864e5));return t+(t==1?' Tag':' Tage')};
@@ -560,25 +561,44 @@ return`<div class="card"><div class="top"><h2 style="margin:0">${esc(f.name)}${f
 ${last?`<div style="margin-top:8px"><b style="font-size:24px">${nf(last.value)}</b> ${esc(f.unit)} <span class="mut">\u00b7 ${fmt(new Date(last.ts).getTime())}</span>${dl!==null?` <span class="pill r2">${dl>0?'+':''}${nf(dl)}</span>`:''}</div>${spark(vs.slice(-12).map(v=>v.value))}`:'<p class="mut" style="margin:8px 0">Noch keine Werte.</p>'}
 <div class="ed" style="margin-top:8px"><input type="number" step="any" inputmode="decimal" id="hv${f.id}" placeholder="Wert"><input type="datetime-local" id="ht${f.id}" value="${nowIso()}"><button class="btn sm" data-a="hadd" data-f="${f.id}" data-c="${c.id}">Eintragen</button></div>
 ${vs.slice(-5).reverse().map(v=>`<div class="ed" style="margin:0 0 4px;justify-content:space-between"><span class="mut">${fmt(new Date(v.ts).getTime())}</span><b>${nf(v.value)} ${esc(f.unit)}</b><button class="x" data-a="delHV" data-id="${v.id}"></button></div>`).join('')}</div>`};
-const vHealth=()=>{if(!CATS.length)return'<div class="card"><h2>Noch leer</h2><p>Lege unter <b>Einstellungen \u2192 Stammdaten</b> mindestens ein Tier an.</p></div>';
-const c=CATS.find(x=>x.id==S.ha)||CATS[0];S.ha=c.id;const bd=HF.birthdays[c.id]||'';
-return`<div class="row" style="margin-bottom:14px">${CATS.map(x=>cchip(x,x.id==c.id,'hsel')).join('')}</div>
-<div class="card"><h2>Steckbrief</h2>${bd?`<div class="cp" style="border:0"><span>Geburtstag</span><b>${new Date(bd+'T00:00').toLocaleDateString(LOCALE(),{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div><p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:'<p class="mut" style="margin:0">Noch kein Geburtstag eingetragen.</p>'}<p class="mut" style="margin:8px 0 0">Der Geburtstag wird in den Stammdaten geändert.</p></div>
-${HF.fields.map(f=>fieldCard(c,f)).join('')}
-<div class="card"><h2>Neues Feld hinzuf\u00fcgen</h2><div class="ed"><input type="text" id="hfn" placeholder="Name, z. B. Puls"><input type="text" id="hfu" placeholder="Einheit" style="max-width:110px"></div><button class="btn gh" data-a="hfadd">Feld hinzuf\u00fcgen</button></div>`};
+const vacState=v=>{if(!v.valid_until)return null;const d=Math.round((new Date(v.valid_until+'T00:00')-new Date(nowIso().slice(0,10)+'T00:00'))/864e5);return d<0?{d,c:'r1',t:'abgelaufen'}:d<=30?{d,c:'r2',t:'läuft bald ab'}:{d,c:'r3',t:'gültig'}};
+const dFmt=x=>x?new Date(x+'T00:00').toLocaleDateString(LOCALE(),{day:'2-digit',month:'2-digit',year:'numeric'}):'–';
+const vHealth=()=>{if(!CATS.length)return'<div class="card"><h2>Noch leer</h2><p>Lege unter <b>Einstellungen → Tiere</b> mindestens ein Tier an.</p></div>';
+const c=CATS.find(x=>x.id==S.ha)||CATS[0];S.ha=c.id;const p=PRF[c.id]||{},bd=HF.birthdays[c.id]||p.birthday||'',sec=S.hs||'med',td=nowIso().slice(0,10);
+const vs=VAC.filter(v=>v.cat_id==c.id),warn=vs.map(v=>({v,s:vacState(v)})).filter(x=>x.s&&x.s.d<=30);
+const head=`<div class="row" style="margin-bottom:12px">${CATS.map(x=>cchip(x,x.id==c.id,'hsel')).join('')}</div>
+<div class="row" style="margin-bottom:12px;flex-wrap:nowrap;gap:6px">${[['med','Medizin'],['vac','Impfpass'],['val','Messwerte']].map(([k,l])=>`<button class="chip ${sec==k?'on':''}" data-a="hsec" data-v="${k}" style="flex:1 1 0;min-width:0;padding:8px 4px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</button>`).join('')}</div>`;
+let body='';
+if(sec=='med'){const ta=(f,l,ph)=>`<label class="pfl"><span class="mut">${l}</span><textarea rows="2" data-e="pf" data-i="${c.id}" data-f="${f}" placeholder="${ph}">${esc(p[f]||'')}</textarea></label>`;
+const info=[p.breed,GENL[p.gender_fixed],p.color,p.chip_number?'Chip '+p.chip_number:''].filter(Boolean).map(esc).join(' · ');
+body=`<div class="card emerg"><h2>⚠️ Notfall-Info · ${esc(c.name)}</h2>${info?`<p class="mut" style="margin:0 0 8px">${info}</p>`:''}
+${ta('allergies','Allergien / Unverträglichkeiten','z. B. Huhn, Penicillin')}${ta('conditions','Chronische Diagnosen / Vorerkrankungen','z. B. chronische Niereninsuffizienz')}${ta('permanent_meds','Dauerhafte Medikation & Hinweise','z. B. Nierendiät, 1 Tablette täglich')}</div>
+${warn.length?`<div class="card" style="border-color:#d4493e"><b>💉 Impfschutz prüfen</b>${warn.map(x=>`<div class="mut">${esc(x.v.vaccine_name)}: ${x.s.d<0?'seit '+(-x.s.d)+' Tagen abgelaufen':x.s.d==0?'läuft heute ab':'läuft in '+x.s.d+' Tagen ab'}</div>`).join('')}</div>`:''}
+<div class="card"><h2>Steckbrief</h2><div class="cp" style="border:0"><span>Geburtstag</span><b>${dFmt(bd)}</b></div>${bd?`<p class="mut" style="margin:0">Alter: <b>${ageText(bd)}</b></p>`:''}<p class="mut" style="margin:8px 0 0">Name, Chip, Rasse und weitere Angaben pflegst du unter Einstellungen → Tiere.</p></div>`}
+else if(sec=='vac'){body=`<div class="card"><h2>💉 Impfpass · ${esc(c.name)}</h2>${vs.length?`<table class="vt"><thead><tr><th>Impfung</th><th>Gegeben</th><th>Gültig bis</th><th></th></tr></thead><tbody>${vs.map(v=>{const st=vacState(v);return`<tr><td><b>${esc(v.vaccine_name)}</b></td><td>${dFmt(v.date_given)}</td><td>${dFmt(v.valid_until)}${st?`<div><span class="pill ${st.c}">${st.t}</span></div>`:''}</td><td><button class="x" data-a="vdel" data-id="${v.id}"></button></td></tr>`}).join('')}</tbody></table>`:'<p class="mut" style="margin:0">Noch keine Impfungen eingetragen.</p>'}</div>
+<div class="card"><h2>Impfung hinzufügen</h2><input type="text" id="vn" list="vlist" placeholder="Name, z. B. Tollwut"><datalist id="vlist">${['Tollwut','Katzenseuche','Katzenschnupfen','Leukose','Staupe','Parvovirose','Leptospirose','Zwingerhusten'].map(x=>`<option value="${x}">`).join('')}</datalist>
+<div class="ed tools" style="margin-top:10px;flex-wrap:wrap"><label class="rpl"><span class="mut">Gegeben</span><input type="date" id="vg" value="${td}"></label><label class="rpl"><span class="mut">Gültig bis</span><input type="date" id="vu"></label></div>
+<button class="btn" style="margin-top:12px" data-a="vadd" data-c="${c.id}">Impfung eintragen</button><p class="mut" style="margin:10px 0 0">Läuft eine Impfung in den nächsten 30 Tagen ab, bekommst du eine Push-Erinnerung (7 Tage vorher und am Ablauftag nochmal).</p></div>`}
+else body=`${HF.fields.map(f=>fieldCard(c,f)).join('')}
+<div class="card"><h2>Neues Feld hinzufügen</h2><div class="ed"><input type="text" id="hfn" placeholder="Name, z. B. Puls"><input type="text" id="hfu" placeholder="Einheit" style="max-width:110px"></div><button class="btn gh" data-a="hfadd">Feld hinzufügen</button></div>`;
+return head+body};
 Object.assign(A,{
+hsec:d=>{S.hs=d.v},
+vadd:T(async d=>{const n=val('#vn');if(!n)return toast('Bitte den Namen der Impfung eingeben');await API('POST','/api/health/vaccinations',{cat_id:+d.c,vaccine_name:n,date_given:val('#vg')||null,valid_until:val('#vu')||null});toast('Impfung eingetragen ✓')}),
+vdel:T(async d=>{await API('DELETE','/api/health/vaccinations/'+d.id)}),
 hsel:d=>{const c=CATS.find(x=>x.name==d.v);if(c)S.ha=c.id},
 hadd:T(async d=>{const v=($('#hv'+d.f).value||'').replace(',','.').trim();if(v===''||isNaN(+v))return toast('Bitte einen Wert eingeben');await API('POST','/api/health/values',{cat_id:+d.c,field_id:+d.f,value:+v,ts:$('#ht'+d.f).value||nowIso()});toast('Wert gespeichert \u2713')}),
 hfadd:T(async()=>{const n=val('#hfn');if(!n)return;await API('POST','/api/health/fields',{name:n,unit:val('#hfu')});toast('Feld angelegt \u2713')}),
 delHV:T(async d=>{await API('DELETE','/api/health/values/'+d.id)}),
 delHF:T(async d=>{await API('DELETE','/api/health/fields/'+d.id)})});
+CONF.vdel=d=>['Impfung löschen?',`„${(VAC.find(v=>v.id==d.id)||{}).vaccine_name||''}“ wird aus dem Impfpass entfernt.`];
 CONF.delHV=()=>['Wert l\u00f6schen?','Dieser Messwert wird endg\u00fcltig gel\u00f6scht.'];
 CONF.delHF=d=>['Feld l\u00f6schen?',`\u201e${(HF.fields.find(f=>f.id==d.id)||{}).name}\u201c wird ausgeblendet. Bereits erfasste Werte bleiben gespeichert.`];
 E.bday=T(async t=>{await API('PUT','/api/health/birthday/'+t.dataset.i,{birthday:t.value||null})});
 
 /* ===== Bericht: Kategorien, Tiere und Zeitraum wählen ===== */
-const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['vomit','Spucken'],['health','Gesundheit']];
-S.rp={k:{food:1,snack:1,drink:1,vomit:1,health:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
+const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['meds','Präparate'],['vomit','Spucken'],['health','Gesundheit']];
+S.rp={k:{food:1,snack:1,drink:1,meds:1,vomit:1,health:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
 const hasUnk=()=>V0.some(v=>v.cat=='Unbekannt');
 const vReport=()=>{const r=S.rp,td=nowIso().slice(0,10),all=CATS.every(c=>!r.x[c.id]);
 return`<div class="card"><h2>Bericht zusammenstellen</h2><p class="mut" style="margin-top:0">Wähle Kategorien, Tiere und Zeitraum. Der Bericht öffnet sich als druckfertige Seite („Als PDF speichern“). Das Alter eines Tieres steht einmal im Tierkopf (Stand: heute).</p>
@@ -600,6 +620,84 @@ const q=new URLSearchParams({kinds:k.join(','),animals:an.map(c=>c.id).join(',')
 if(r.cust){if(!r.from||!r.to||r.from>r.to)return toast('Bitte einen gültigen Zeitraum wählen');q.set('date_from',r.from);q.set('date_to',r.to)}else q.set('days',Math.max(1,Math.min(3650,+r.days||30)));q.set('mode',r.mix?'mixed':'split');
 window.open('/api/export/report?'+q,'_blank')}});
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset&&t.dataset.rp){const r=S.rp;if(t.dataset.rp=='mix')r.mix=t.checked?1:0;else if(t.dataset.rp=='days')r.days=+t.value||30;else r[t.dataset.rp]=t.value}});
+
+/* ===== Präparate (Medikamente, Pasten, Pulver, Supplemente) ===== */
+let MG=[],MED=[];
+Object.assign(S,{pm:0,msel:{},med:null,mdose:'',mwf:0,mnote:'',mt:'',nmed:0});
+const MH=m=>`<div class="card"><div class="top"><div><b>💊 ${esc(m.med)}</b>${m.dose?' · '+esc(m.dose):''}<div class="mut">Präparat · ${fmt(m.ts)}${m.wf?' · zusammen mit der Fütterung':''}</div></div><button class="x" data-a="del" data-k="m" data-id="${m.id}">🗑️</button></div>
+<div class="row" style="margin-top:8px">${m.cats.map(c=>`<span class="pill">${esc(c)}</span>`).join('')}</div>${m.note?`<div class="mut" style="margin-top:6px">${esc(m.note)}</div>`:''}</div>`;
+const vMeds=()=>{if(!CATS.length)return'<div class="card"><h2>🧸 Noch leer</h2><p>Lege unter <b>Einstellungen → Tiere</b> mindestens ein Tier an.</p></div>';
+if(S.med==null&&MED.length){S.med=MED[0].id;S.mdose=MED[0].d}
+const ks=Object.keys(S.msel);
+return`<div class="card"><h2>🐱 Wer bekommt es?</h2><div class="row">${CATS.map(c=>cchip(c,c.name in S.msel,'mcat')).join('')}</div>${CATS.length>1?`<div class="row" style="margin-top:12px"><button class="chip" data-a="mall" style="padding:6px 12px">Alle (${CATS.length})</button></div>`:''}</div>
+<div class="card"><h2>💊 Welches Präparat?</h2>
+${MED.length?`<select id="medsel">${MED.map(x=>`<option value="${x.id}" ${x.id==S.med?'selected':''}>${esc(x.n)}</option>`).join('')}<option value="new" ${S.nmed?'selected':''}>＋ Neues Präparat anlegen …</option></select>`:''}
+${S.nmed||!MED.length?`<div class="ed" style="margin:8px 0 0;flex-wrap:wrap"><input type="text" id="nmedn" placeholder="Name des Präparats" style="flex:1 1 140px"><input type="text" id="nmedd" placeholder="Standarddosis (optional)" style="flex:1 1 140px"><button class="btn sm" data-a="addMedF">OK</button>${MED.length?'<button class="x" data-a="cancelMed" aria-label="Abbrechen"></button>':''}</div>`:''}
+<div class="mut" style="margin:12px 0 6px">Dosis</div><input type="text" id="mdose" value="${esc(S.mdose)}" placeholder="z. B. 1 Tablette, 2 ml">
+<div class="cp" style="border:0;margin-top:10px"><span>Zusammen mit der Fütterung gegeben</span><label class="sw"><input type="checkbox" data-m="wf" ${S.mwf?'checked':''}><i></i></label></div></div>
+<div class="card"><h2>📝 Anmerkung (optional)</h2><input type="text" id="mnote" value="${esc(S.mnote)}" placeholder="z. B. in Leckerli versteckt">
+<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="mt" value="${S.mt||nowIso()}"></div>
+<button class="btn" data-a="saveM" ${ks.length&&S.med!=null?'':'disabled'}>Präparat speichern</button>`};
+{const _k=A.kind;A.kind=d=>{S.pm=0;_k(d)}}
+Object.assign(A,{
+meds:()=>{S.pm=1},
+mcat:d=>{d.v in S.msel?delete S.msel[d.v]:S.msel[d.v]=1},
+mall:()=>{CATS.forEach(c=>{S.msel[c.name]=1})},
+cancelMed:()=>{S.nmed=0},
+addMedF:T(async()=>{const n=val('#nmedn'),d=val('#nmedd');if(!n)return;const r=await API('POST','/api/meds',{name:n,dose:d});S.nmed=0;return()=>{S.med=r.id;S.mdose=d}}),
+saveM:T(async()=>{const names=Object.keys(S.msel),m=MED.find(x=>x.id==S.med);if(!names.length||!m)return;await API('POST','/api/med-logs',{cat_names:names,med_id:m.id,dose:S.mdose,with_food:!!S.mwf,notes:S.mnote,timestamp:S.mt||nowIso()});S.msel={};S.mnote='';S.mt='';S.mwf=0;return()=>{S.mdose=m.d;toast(pick(['💊 '+m.n+' für '+names.join(', ')+' eingetragen ✓','Notiert: '+m.n+' – '+names.join(', ')+' 💊','Gespeichert – gut, dass du dran denkst 🧡']))}}),
+addMedS:T(async()=>{const n=val('#nmeds'),d=val('#nmedsd');if(!n)return;await API('POST','/api/meds',{name:n,dose:d});toast('Präparat angelegt ✓')}),
+delMed:T(async d=>{await API('DELETE','/api/meds/'+d.i)})});
+Object.assign(E,{
+medn:T(async t=>{const m=MED.find(x=>x.id==t.dataset.i),v=t.value.trim();if(!m||!v||v==m.n)return;await API('PUT','/api/meds/'+m.id,{name:v,dose:m.d})}),
+medd:T(async t=>{const m=MED.find(x=>x.id==t.dataset.i);if(!m||t.value.trim()==m.d)return;await API('PUT','/api/meds/'+m.id,{name:m.n,dose:t.value.trim()})})});
+document.addEventListener('input',e=>{const t=e.target;if(t.id=='mdose')S.mdose=t.value;else if(t.id=='mnote')S.mnote=t.value;else if(t.id=='mt')S.mt=t.value});
+document.addEventListener('change',e=>{const t=e.target;if(t.id=='medsel'){if(t.value=='new')S.nmed=1;else{S.nmed=0;S.med=+t.value;const m=MED.find(x=>x.id==S.med);S.mdose=m?m.d:''}render()}else if(t.dataset&&t.dataset.m=='wf')S.mwf=t.checked?1:0});
+
+/* Präparat-Eintrag bearbeiten */
+let MD=null;
+function mdRender(){let el=$('#mdm');if(!MD){if(el)el.remove();return}if(!el){document.body.insertAdjacentHTML('beforeend','<div id="mdm"></div>');el=$('#mdm')}
+el.style.cssText='position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;overflow:auto';
+el.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0;max-height:92vh;overflow:auto"><h2>Präparat bearbeiten</h2><div class="mut" style="margin-bottom:10px"><b>${esc(MD.med)}</b> · ${esc(MD.cats.join(', '))}</div><div class="mut" style="margin:0 0 6px">Dosis</div><input type="text" id="mddose" value="${esc(MD.dose)}" placeholder="z. B. 1 Tablette, 2 ml"><div class="cp" style="border:0;margin-top:10px"><span>Zusammen mit der Fütterung gegeben</span><label class="sw"><input type="checkbox" data-md="wf" ${MD.wf?'checked':''}><i></i></label></div><div class="mut" style="margin:8px 0 6px">Zeitpunkt</div><input type="datetime-local" id="mdts" value="${MD.ts}"><div style="height:8px"></div><input type="text" id="mdnote" value="${esc(MD.note)}" placeholder="Anmerkung (optional)"><div class="row" style="margin-top:14px;flex-wrap:nowrap"><button class="btn gh" data-a="mdcancel" style="flex:1">Abbrechen</button><button class="btn" data-a="mdsave" style="flex:1">Speichern</button></div></div>`}
+A.medit=d=>{const m=MG.find(x=>String(x.id)==String(d.id));if(!m)return;MD={id:m.id,med:m.med,cats:m.cats,dose:m.dose,wf:m.wf?1:0,ts:new Date(m.ts-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16),note:m.note||''};mdRender()};
+A.mdcancel=()=>{MD=null;mdRender()};
+A.mdsave=async()=>{if(!MD)return;try{await API('PUT','/api/med-logs/batch/'+encodeURIComponent(MD.id),{dose:MD.dose,with_food:!!MD.wf,timestamp:MD.ts,notes:MD.note});MD=null;mdRender();await load();toast('Präparat aktualisiert ✓')}catch(e){}render()};
+document.addEventListener('input',e=>{const t=e.target;if(!MD)return;if(t.id=='mddose')MD.dose=t.value;else if(t.id=='mdts')MD.ts=t.value;else if(t.id=='mdnote')MD.note=t.value});
+document.addEventListener('change',e=>{const t=e.target;if(MD&&t.dataset&&t.dataset.md=='wf')MD.wf=t.checked?1:0});
+
+/* ===== Einstellungen → Tiere ===== */
+const GENL={female:'Weiblich',female_spayed:'Weiblich, kastriert',male:'Männlich',male_neutered:'Männlich, kastriert'};
+Object.assign(S,{pt:null,pn:0,hs:'med'});
+const vPets=()=>{const td=nowIso().slice(0,10);if(!CATS.length)S.pn=1;
+const c=CATS.find(x=>x.id==S.pt)||CATS[0];if(c)S.pt=c.id;const p=c?(PRF[c.id]||{}):{};
+const chips=`<div class="row" style="margin-bottom:14px">${CATS.map(x=>cchip(x,!S.pn&&c&&x.id==c.id,'petsel')).join('')}<button class="chip ${S.pn?'on':''}" data-a="petnew">＋ Neu</button></div>`;
+if(S.pn||!c)return chips+`<div class="card"><h2>🐾 Neues Tier</h2><input type="text" id="ncat" placeholder="Name des Tieres"><label class="pfl" style="margin-top:10px"><span class="mut">Geburtstag (optional)</span><input type="date" id="nbday" max="${td}"></label>
+<div class="row" style="margin-top:12px"><button class="btn" data-a="addCat" style="flex:1">🐱 Katze anlegen</button><button class="btn gh" data-a="addDog" style="flex:1">🐶 Hund anlegen</button></div><p class="mut" style="margin:10px 0 0">Alle weiteren Angaben (Rasse, Chip, Medizin …) kannst du danach hier und im Gesundheits-Reiter ergänzen.</p></div>`;
+const f=(k,l,t='text',ph='')=>`<label class="pfl"><span class="mut">${l}</span><input type="${t}" data-e="pf" data-i="${c.id}" data-f="${k}" value="${esc(p[k]||'')}" placeholder="${ph}" ${t=='date'?`max="${td}"`:''}></label>`;
+const bd=HF.birthdays[c.id]||p.birthday||'';
+return chips+`<div class="card"><h2>Stammdaten · ${esc(c.name)}</h2>
+<div class="ed" style="margin-bottom:12px"><button class="av avb" data-a="sp" data-i="${c.id}" style="${cst(c)}" title="Tierart wechseln (Katze/Hund)">${esc(c.name[0])}</button><input type="text" data-e="cat" data-i="${c.id}" value="${esc(c.name)}"></div>
+<div class="row" style="margin-bottom:12px"><button class="chip ${c.sp!='dog'?'on':''}" data-a="spset" data-i="${c.id}" data-v="cat">🐱 Katze</button><button class="chip ${c.sp=='dog'?'on':''}" data-a="spset" data-i="${c.id}" data-v="dog">🐶 Hund</button></div>
+<div class="pfg"><label class="pfl"><span class="mut">Position (1–${CATS.length})</span><input type="number" min="1" max="${CATS.length}" inputmode="numeric" data-e="psort" data-i="${c.id}" value="${CATS.indexOf(c)+1}"></label>
+<label class="pfl"><span class="mut">Avatar-Farbe</span><input type="color" class="cpick" value="${ccol(c)}" data-ccol="${c.id}" title="Farbe des Avatars" style="width:100%;height:44px"></label>
+${f('birthday','Geburtstag','date')}${bd?`<div class="pfl"><span class="mut">Alter</span><div style="padding:11px 0"><b>${ageText(bd)}</b></div></div>`:''}</div></div>
+<div class="card"><h2>Identifikation</h2><div class="pfg">${f('breed','Rasse')}${f('color','Farbe')}
+<label class="pfl"><span class="mut">Geschlecht</span><select data-e="pf" data-i="${c.id}" data-f="gender_fixed"><option value="">– nicht angegeben –</option>${Object.entries(GENL).map(([k,l])=>`<option value="${k}" ${p.gender_fixed==k?'selected':''}>${l}</option>`).join('')}</select></label>
+${f('markings','Besondere Kennzeichen')}${f('chip_number','Chipnummer')}${f('chip_date','Implantationstag','date')}${f('chip_location','Implantationsstelle')}</div>
+<p class="mut" style="margin:12px 0 0">Allergien, Vorerkrankungen und Dauermedikation findest du unter Gesundheit → Medizin. Die Reihenfolge (Position) gilt überall in der App.</p></div>
+<button class="btn gh" data-a="delCat" data-i="${c.id}" style="color:#d4493e">🗑️ ${esc(c.name)} entfernen</button>`};
+Object.assign(A,{
+petsel:d=>{const c=CATS.find(x=>x.name==d.v);if(c){S.pt=c.id;S.pn=0}},
+petnew:()=>{S.pn=1},
+spset:T(async d=>{const c=CATS.find(x=>x.id==d.i);if(!c||(c.sp=='dog')==(d.v=='dog'))return;await API('PUT','/api/animals/'+d.i+'/profile',{species:d.v})})});
+{const _ac=A.addCat;A.addCat=d=>{const r=_ac(d);S.pn=0;return r}}
+Object.assign(E,{
+pf:T(async t=>{await API('PUT','/api/animals/'+t.dataset.i+'/profile',{[t.dataset.f]:t.value})}),
+psort:T(async t=>{const n=Math.max(1,Math.min(CATS.length,parseInt(t.value)||1));await API('PUT','/api/animals/'+t.dataset.i+'/sort',{position:n})})});
+document.head.insertAdjacentHTML('beforeend','<style>textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);font:inherit;resize:vertical}textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}'+
+'.pfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.pfl{display:flex;flex-direction:column;gap:4px;min-width:0}.pfl input,.pfl select,.pfl textarea{width:100%;min-width:0}.pfl+.pfl{margin-top:10px}.pfg>.pfl+.pfl{margin-top:0}'+
+'.emerg{border:2px solid #d4493e;background:rgba(212,73,62,.08)}.emerg h2{color:#d4493e}'+
+'.vt{width:100%;border-collapse:collapse;font-size:13px}.vt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 4px;border-bottom:1px solid var(--line)}.vt td{padding:9px 4px;border-bottom:1px solid var(--line);vertical-align:middle}.vt tr:last-child td{border-bottom:0}</style>');
 /* ===== Push-Erinnerung ===== */
 const PUSH={ok:false,avail:false,key:null,sub:false,slots:[]};
 const b64u=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))};
@@ -610,11 +708,12 @@ if(PUSH.ok&&PUSH.avail){try{const reg=await navigator.serviceWorker.getRegistrat
 A.pushOn=async()=>{try{const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});await navigator.serviceWorker.ready;if(await Notification.requestPermission()!='granted'){toast('Benachrichtigungen wurden nicht erlaubt');return}
 const s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(PUSH.key)});await pushSend(s);PUSH.sub=true;toast('Erinnerungen aktiviert \u2713')}catch(e){console.warn(e);toast('Aktivierung fehlgeschlagen')}render()};
 A.pushOff=async()=>{try{const reg=await navigator.serviceWorker.getRegistration('/'),s=reg&&await reg.pushManager.getSubscription();if(s){await API('POST','/api/push/unsubscribe',{endpoint:s.endpoint});await s.unsubscribe()}PUSH.sub=false;toast('Erinnerungen deaktiviert')}catch(e){console.warn(e)}render()};
+A.pushTestV=async()=>{try{const r=await API('POST','/api/push/test?kind=vaccination');toast(r.sent?'Test gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTestB=async()=>{try{const r=await API('POST','/api/push/test?kind=birthday');toast(r.sent?'Geburtstags-Nachrichten gesendet':'Keine Nachricht gesendet')}catch(e){}};
 A.pushTest=async()=>{try{const r=await API('POST','/api/push/test');toast(r.sent?'Testnachricht gesendet':'Keine Nachricht gesendet')}catch(e){}};
 const pushCard=()=>{let b;if(!PUSH.ok)b='<p class="mut" style="margin:0">Benachrichtigungen funktionieren nur \u00fcber HTTPS und in der installierten App (iPhone: \u201eZum Home-Bildschirm\u201c, ab iOS 16.4).</p>';
 else if(!PUSH.avail)b='<p class="mut" style="margin:0">Der Server hat noch keine Push-Unterst\u00fctzung. Installiere im Container das Paket \u201epywebpush\u201c.</p>';
-else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). Dazu kommen Geburtstags-Nachrichten: zwei Wochen vorher und am Geburtstag um 09:00 Uhr. ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Test: Futter</button><button class="btn gh sm" data-a="pushTestB">Test: Geburtstag</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
+else b=`<p class="mut" style="margin-top:0">Erinnerung ca. 2 Stunden nach den \u00fcblichen F\u00fctterungszeiten, falls bis dahin kein Futter eingetragen wurde (Snacks und Getr\u00e4nke z\u00e4hlen nicht). Dazu kommen Geburtstags-Nachrichten (zwei Wochen vorher und am Geburtstag um 09:00 Uhr) und Impf-Erinnerungen. ${PUSH.slots.length?`Erkannte Zeiten: <b>${PUSH.slots.map(s=>s.time+' \u2192 '+s.reminder).join(', ')}</b>.`:'Noch keine F\u00fctterungszeiten erkannt (mindestens 3 Tage Daten n\u00f6tig).'}</p><div class="row">${PUSH.sub?'<button class="btn gh sm" data-a="pushTest">Test: Futter</button><button class="btn gh sm" data-a="pushTestB">Test: Geburtstag</button><button class="btn gh sm" data-a="pushTestV">Test: Impfung</button><button class="btn gh sm" data-a="pushOff">Deaktivieren</button>':'<button class="btn sm" data-a="pushOn">Erinnerungen aktivieren</button>'}</div>`;
 return`<div class="card"><h2>Erinnerungen</h2>${b}</div>`};
 const _p5=post2;
 post2=function(a){_p5(a);

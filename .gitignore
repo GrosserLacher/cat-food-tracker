@@ -4,6 +4,7 @@ data/
 *.db
 *.sqlite
 *.sqlite3
+*~
 uploads/
 
 # Python & System-Dateien

@@ -35,7 +35,7 @@ DB_PATH = os.path.join(DATA_DIR, "tracker.db")
 router = APIRouter(prefix="/api/export")
 
 KIND_KEYS = ("food", "snack", "drink")
-ALL_KINDS = KIND_KEYS + ("vomit", "health")
+ALL_KINDS = KIND_KEYS + ("meds", "vomit", "health")
 DEFAULT_COLORS = ["#f4b183", "#a8d5ba", "#b9a8e8", "#f2a7c3", "#9fcbe8", "#e8d08a"]
 esc = html.escape
 
@@ -110,6 +110,7 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 .av.dog::before,.av.dog::after{top:.05em;width:.5em;height:.9em;border:0;background:var(--ib);border-radius:.15em .15em .5em .5em}
 .av.dog::before{left:-.28em;transform:rotate(10deg)}.av.dog::after{right:-.28em;transform:rotate(-10deg)}
 .pill.k-food{background:#fbe6dd;color:#c8563a}.pill.k-snack{background:#fdf0d5;color:#a8730f}.pill.k-drink{background:#e5edf8;color:#5a7fb8}
+.pill.k-meds{background:#ece6fb;color:#6b52b8}
 .pill.k-vomit{background:#fbe3df;color:#c2453b}.pill.k-health{background:#e1f1e3;color:#3f8f5f}
 .sum{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 .nw{white-space:nowrap}
@@ -131,7 +132,8 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 TXT = {
     "de": dict(
         title="Bericht", created="Erstellt am", period="Zeitraum", animals="Tiere",
-        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", vomit="Spucken", health="Gesundheit"),
+        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", meds="Präparate", vomit="Spucken", health="Gesundheit"),
+        med="Präparat", dose="Dosis", with_food="mit Fütterung",
         species=dict(cat="Katze", dog="Hund"), born="geboren am", age="Alter am Exporttag", no_birthday="Geburtstag nicht eingetragen",
         unknown="Unbekannt", unknown_note="Spuck-Ereignisse ohne Tierzuordnung",
         time="Zeitpunkt", item="Hersteller & Sorte", rating="Bewertung", note="Notiz", category="Kategorie",
@@ -146,7 +148,8 @@ TXT = {
     ),
     "en": dict(
         title="Report", created="Created on", period="Period", animals="Animals",
-        kinds=dict(food="Food", snack="Snacks", drink="Drinks", vomit="Vomiting", health="Health"),
+        kinds=dict(food="Food", snack="Snacks", drink="Drinks", meds="Medication", vomit="Vomiting", health="Health"),
+        med="Medication", dose="Dose", with_food="with feeding",
         species=dict(cat="Cat", dog="Dog"), born="born on", age="Age on export day", no_birthday="Birthday not set",
         unknown="Unknown", unknown_note="Vomiting incidents without an assigned animal",
         time="Time", item="Brand & variety", rating="Rating", note="Notes", category="Category",
@@ -279,6 +282,12 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
             if f["cat_name"] in pet_names:
                 feeds.setdefault((f["cat_name"], f["kind"] or "food"), []).append(f)
 
+    meds_by_cat = {}
+    if "meds" in sel and pets:
+        for m in conn.execute("SELECT * FROM med_logs WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, id DESC", (start, end)):
+            if m["cat_name"] in pet_names:
+                meds_by_cat.setdefault(m["cat_name"], []).append(m)
+
     vtypes = {r["key"]: (r["emoji"] or "", bool(r["relevant"])) for r in conn.execute("SELECT key, emoji, relevant FROM vomit_types")}
     vomits = {}
     if "vomit" in sel:
@@ -339,6 +348,20 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         for f in lst:
             out += (f"<tr><td class='nw'>{_fmt_dt(f['timestamp'], t)}</td><td><strong>{esc(f['manufacturer_name'])}</strong> – {esc(f['food_name'])}</td>"
                     f"<td>{rating_pill(f['rating'])}</td><td>{esc(f['notes'] or '–')}</td></tr>")
+        return out + "</tbody></table>"
+
+    def med_section(name):
+        lst = meds_by_cat.get(name, [])
+        h = f"<h3>{esc(t['kinds']['meds'])}</h3>"
+        if not lst:
+            return h + f"<p class='muted'>{t['none_entries']}</p>"
+        out = (h + f"<div class='sum'><span class='pill neutral'>{len(lst)} {_ent(len(lst), t)}</span></div>"
+               f"<table><thead><tr><th style='width:112px'>{t['time']}</th><th>{t['med']}</th><th style='width:26%'>{t['dose']}</th>"
+               f"<th style='width:24%'>{t['note']}</th></tr></thead><tbody>")
+        for m in lst:
+            wf = f" <span class='pill k-food'>{t['with_food']}</span>" if m["with_food"] else ""
+            out += (f"<tr><td class='nw'>{_fmt_dt(m['timestamp'], t)}</td><td><strong>{esc(m['med_name'])}</strong></td>"
+                    f"<td>{esc(m['dose'] or '–')}{wf}</td><td>{esc(m['notes'] or '–')}</td></tr>")
         return out + "</tbody></table>"
 
     def vomit_section(key):
@@ -403,6 +426,9 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         for k in food_kinds:
             for f in feeds.get((name, k), []):
                 add(k, f["timestamp"], f"<strong>{esc(f['manufacturer_name'])}</strong> – {esc(f['food_name'])} {rating_pill(f['rating'])}", f["notes"])
+        for m in meds_by_cat.get(name, []):
+            wf = f" <span class='pill k-food'>{t['with_food']}</span>" if m["with_food"] else ""
+            add("meds", m["timestamp"], f"<strong>{esc(m['med_name'])}</strong>{(' · ' + esc(m['dose'])) if m['dose'] else ''}{wf}", m["notes"])
         for v in vomits.get(name, []):
             vt = v["vomit_type"] or "food"
             em, rel = vtypes.get(vt, ("", True))
@@ -447,12 +473,14 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
                 pass
         else:
             sub.append(t["no_birthday"])
-        tl = mixed and bool(food_kinds or "vomit" in sel)   # Zeitverlauf nur, wenn es neben Gesundheit etwas zu mischen gibt
+        tl = mixed and bool(food_kinds or "meds" in sel or "vomit" in sel)   # Zeitverlauf nur, wenn es neben Gesundheit etwas zu mischen gibt
         body = health_section(p, tables=not tl) if "health" in sel else ""   # Gesundheit direkt unter dem Tiernamen
         if tl:
             body += timeline_section(p)
         else:
             body += "".join(food_section(p["name"], k) for k in food_kinds)
+            if "meds" in sel:
+                body += med_section(p["name"])
             if "vomit" in sel:
                 body += vomit_section(p["name"])
         return (f"<section class='pet'><div class='pethead'><span class='av{' dog' if dog else ''}' style='{style}'>{esc(p['name'][:1].upper())}</span>"
@@ -470,6 +498,9 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
     for k in food_kinds:
         n_k = sum(len(v) for (n, kk), v in feeds.items() if kk == k)
         kpis.append((t["kinds"][k], n_k, _ent(n_k, t)))
+    if "meds" in sel:
+        n_m = sum(len(v) for v in meds_by_cat.values())
+        kpis.append((t["kinds"]["meds"], n_m, _ent(n_m, t)))
     if "vomit" in sel:
         allv = [v for key, lst in vomits.items() if key != "?" for v in lst]   # ohne "Unbekannt"
         kpis.append((t["kinds"]["vomit"], len(allv), f"{sum(1 for v in allv if vtypes.get(v['vomit_type'] or 'food', ('', True))[1])}× {t['relevant']}"))

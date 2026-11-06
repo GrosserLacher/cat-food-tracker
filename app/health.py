@@ -39,6 +39,10 @@ def migrate_health():
         id INTEGER PRIMARY KEY AUTOINCREMENT, cat_id INTEGER NOT NULL, field_id INTEGER NOT NULL,
         value REAL NOT NULL, ts TEXT NOT NULL, note TEXT DEFAULT '')""")
     c.execute("CREATE INDEX IF NOT EXISTS ix_health_values ON health_values (cat_id, field_id, ts)")
+    c.execute("""CREATE TABLE IF NOT EXISTS vaccinations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, cat_id INTEGER NOT NULL, vaccine_name TEXT NOT NULL,
+        date_given TEXT, valid_until TEXT)""")
+    c.execute("CREATE INDEX IF NOT EXISTS ix_vacc_cat ON vaccinations (cat_id)")
     if not c.execute("SELECT 1 FROM health_fields").fetchone():
         for i, (name, unit) in enumerate(DEFAULT_FIELDS, start=1):
             c.execute("INSERT INTO health_fields (name, unit, builtin, sort) VALUES (?, ?, 1, ?)", (name, unit, i))
@@ -175,6 +179,67 @@ def add_value(data: ValueIn):
 def delete_value(value_id: int):
     conn = _db()
     conn.execute("DELETE FROM health_values WHERE id = ?", (value_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+
+# --- Impfpass -----------------------------------------------------------------------------
+
+class VaccinationIn(BaseModel):
+    cat_id: int
+    vaccine_name: str
+    date_given: Optional[str] = None
+    valid_until: Optional[str] = None
+
+
+def _iso_date(raw, label: str) -> Optional[str]:
+    v = (raw or "").strip()
+    if not v:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        raise HTTPException(status_code=400, detail=f"{label}: Datum ungültig")
+    try:
+        datetime.strptime(v, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{label}: Datum ungültig")
+    return v
+
+
+@router.get("/vaccinations")
+def list_vaccinations(cat_id: Optional[int] = None):
+    conn = _db()
+    q = "SELECT id, cat_id, vaccine_name, date_given, valid_until FROM vaccinations"
+    rows = conn.execute(q + (" WHERE cat_id = ?" if cat_id is not None else "") + " ORDER BY COALESCE(valid_until, '9999'), id",
+                        (cat_id,) if cat_id is not None else ()).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/vaccinations")
+def add_vaccination(data: VaccinationIn):
+    name = data.vaccine_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name der Impfung fehlt")
+    given, until = _iso_date(data.date_given, "Verabreicht"), _iso_date(data.valid_until, "Gültig bis")
+    if given and until and until < given:
+        raise HTTPException(status_code=400, detail="„Gültig bis“ liegt vor dem Impfdatum")
+    conn = _db()
+    if not conn.execute("SELECT 1 FROM cats WHERE id = ?", (data.cat_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Tier ungültig")
+    cur = conn.execute("INSERT INTO vaccinations (cat_id, vaccine_name, date_given, valid_until) VALUES (?, ?, ?, ?)",
+                       (data.cat_id, name[:80], given, until))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"id": new_id}
+
+
+@router.delete("/vaccinations/{vac_id}")
+def delete_vaccination(vac_id: int):
+    conn = _db()
+    conn.execute("DELETE FROM vaccinations WHERE id = ?", (vac_id,))
     conn.commit()
     conn.close()
     return {"status": "deleted"}

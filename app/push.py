@@ -11,6 +11,9 @@ Ablauf
   * Geburtstage: 14 Tage vorher kommt eine Vorab-Erinnerung, am Geburtstag selbst eine
     "Happy Birthday"-Nachricht – jeweils um 09:00 Uhr Ortszeit des Geräts (mit wechselnden Texten).
     Wurde der Server um 09:00 Uhr nicht erreicht, wird bis 12:00 Uhr nachgeholt. Pro Tier und Anlass nur einmal.
+  * Impfungen: Läuft eine eingetragene Impfung (valid_until) in den nächsten 30 Tagen ab, kommt um 09:00 Uhr
+    eine Erinnerung. Weitere Erinnerungen folgen 7 Tage vorher und am Ablauftag (je Stufe nur einmal).
+    Ist für dasselbe Tier und dieselbe Impfung bereits ein neuerer Eintrag vorhanden, wird nicht erinnert.
   * Die Ortszeit kommt vom Gerät (wird beim Anmelden der Erinnerung und bei jedem App-Start
     mitgeschickt), die Zeitzone des Containers spielt keine Rolle.
 """
@@ -41,6 +44,7 @@ KEY_PATH = os.path.join(DATA_DIR, "vapid_private.pem")
 CONTACT = os.environ.get("PUSH_CONTACT", "mailto:admin@example.com")
 BDAY_HOUR = 9        # Uhrzeit der Geburtstags-Nachrichten (Ortszeit des Geräts)
 BDAY_WINDOW = 180   # so viele Minuten nach 09:00 wird noch nachgeholt (falls der Server nicht lief)
+VAC_STAGES = (30, 7, 0)   # Erinnerungsstufen: Tage vor Ablauf der Impfung
 BDAY_ADVANCE = 14   # Vorab-Erinnerung so viele Tage vor dem Geburtstag
 DELAY_MIN = 120      # Erinnerung so viele Minuten nach der üblichen Zeit
 WINDOW_MIN = 90      # danach wird nicht mehr erinnert
@@ -120,12 +124,31 @@ BDAY_TEXT = {
 }
 
 
+VAC_TEXT = {
+    "de": {
+        30: [("Impfung läuft bald ab 💉", "Erinnerung: Die Impfung {vaccine} für {name} läuft bald ab (am {date}, in {days} Tagen)!"),
+             ("Impf-Check fällig 📅", "Die Impfung {vaccine} für {name} läuft am {date} ab. Zeit, einen Termin beim Tierarzt zu machen!")],
+        7: [("Impfung läuft in einer Woche ab ⏳", "Erinnerung: Die Impfung {vaccine} für {name} läuft in {days} Tagen ab ({date}). Hast du schon einen Termin?")],
+        0: [("Impfung heute abgelaufen ⚠️", "Die Impfung {vaccine} für {name} läuft heute ab. Bitte beim Tierarzt auffrischen lassen!"),
+            ("Impfschutz endet heute ⚠️", "Heute endet der Schutz der Impfung {vaccine} für {name}. Ein Anruf in der Praxis lohnt sich!")],
+    },
+    "en": {
+        30: [("Vaccination expires soon 💉", "Reminder: the {vaccine} vaccination for {name} expires soon (on {date}, in {days} days)!"),
+             ("Vaccination check due 📅", "{name}’s {vaccine} vaccination expires on {date}. Time to book a vet appointment!")],
+        7: [("Vaccination expires in a week ⏳", "Reminder: the {vaccine} vaccination for {name} expires in {days} days ({date}). Already booked an appointment?")],
+        0: [("Vaccination expires today ⚠️", "The {vaccine} vaccination for {name} expires today. Please get it renewed at the vet!"),
+            ("Vaccine protection ends today ⚠️", "Today the {vaccine} vaccination for {name} runs out. A call to the vet is worth it!")],
+    },
+}
+
+
 def _db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("""CREATE TABLE IF NOT EXISTS push_subs (
         endpoint TEXT PRIMARY KEY, user_id INTEGER, p256dh TEXT, auth TEXT, lang TEXT DEFAULT 'de',
         tz INTEGER DEFAULT 0, created REAL)""")
+    conn.execute("CREATE TABLE IF NOT EXISTS push_vac_sent (vac_id INTEGER, stage INTEGER, PRIMARY KEY (vac_id, stage))")
     conn.execute("CREATE TABLE IF NOT EXISTS push_sent (day TEXT, slot TEXT, tz INTEGER, PRIMARY KEY (day, slot, tz))")
     return conn
 
@@ -239,6 +262,50 @@ def birthday_message(lang: str, kind: str, name: str, species: str, years: int, 
             "app": os.environ.get("APP_NAME", "")}
 
 
+def vaccination_message(lang: str, stage: int, vaccine: str, name: str, valid_until: date, days: int, cat_id: int = 0) -> dict:
+    lang = lang if lang in VAC_TEXT else "de"
+    title, body = random.Random(f"vac:{cat_id}:{vaccine}:{stage}:{valid_until}").choice(VAC_TEXT[lang][stage])
+    d = valid_until.strftime("%d.%m.%Y") if lang == "de" else valid_until.isoformat()
+    f = dict(vaccine=vaccine, name=name, date=d, days=max(days, 0))
+    return {"title": title.format(**f), "body": body.format(**f), "url": "/", "tag": f"vaccination-{cat_id}-{stage}",
+            "app": os.environ.get("APP_NAME", "")}
+
+
+def due_vaccinations(conn, now_local: datetime) -> list:
+    """Fällige Impf-Erinnerungen (um 09:00 Ortszeit, bis 12:00 nachholbar). Pro Impfung und Stufe nur einmal."""
+    now_min = now_local.hour * 60 + now_local.minute
+    if not (BDAY_HOUR * 60 <= now_min < BDAY_HOUR * 60 + BDAY_WINDOW):
+        return []
+    today = now_local.date()
+    try:
+        rows = conn.execute("SELECT v.id, v.cat_id, v.vaccine_name, v.valid_until, c.name AS cat_name FROM vaccinations v "
+                            "JOIN cats c ON c.id = v.cat_id WHERE v.valid_until IS NOT NULL AND v.valid_until != ''").fetchall()
+    except sqlite3.OperationalError:  # Tabelle fehlt noch
+        return []
+    newest = {}
+    for r in rows:   # je Tier + Impfung zählt nur der Eintrag mit dem spätesten Ablaufdatum
+        key = (r["cat_id"], r["vaccine_name"].strip().lower())
+        if key not in newest or r["valid_until"] > newest[key]["valid_until"]:
+            newest[key] = r
+    out = []
+    for r in newest.values():
+        try:
+            until = date.fromisoformat(r["valid_until"])
+        except ValueError:
+            continue
+        days = (until - today).days
+        reached = [s for s in VAC_STAGES if days <= s]
+        if not reached or days < -7:
+            continue
+        stage = min(reached)
+        sent = {x["stage"] for x in conn.execute("SELECT stage FROM push_vac_sent WHERE vac_id = ?", (r["id"],))}
+        if stage in sent:
+            continue
+        out.append(dict(id=r["id"], cat_id=r["cat_id"], vaccine=r["vaccine_name"], name=r["cat_name"], until=until,
+                        days=days, stage=stage, reached=reached))
+    return out
+
+
 def due_birthdays(conn, now_local: datetime, tz: int) -> list:
     """Fällige Geburtstags-Nachrichten (um 09:00 Ortszeit, bis 12:00 nachholbar)."""
     now_min = now_local.hour * 60 + now_local.minute
@@ -291,6 +358,13 @@ def run_once(now_utc: datetime = None, send=None):
                 for s in (x for x in subs if x["tz"] == tz):
                     msg = birthday_message(s["lang"], ev["kind"], ev["name"], ev["species"], ev["years"], ev["on"], ev["id"])
                     if send(s, msg)[0]:
+                        sent += 1
+            for ev in due_vaccinations(conn, now_local):
+                for st in ev["reached"]:   # frühere Stufen mit abhaken, damit nicht mehrere Nachrichten kommen
+                    conn.execute("INSERT OR IGNORE INTO push_vac_sent (vac_id, stage) VALUES (?, ?)", (ev["id"], st))
+                conn.commit()
+                for s in (x for x in subs if x["tz"] == tz):
+                    if send(s, vaccination_message(s["lang"], ev["stage"], ev["vaccine"], ev["name"], ev["until"], ev["days"], ev["cat_id"]))[0]:
                         sent += 1
         conn.execute("DELETE FROM push_sent WHERE day < ?", ((now_utc - timedelta(days=3)).date().isoformat(),))
         conn.commit()
@@ -364,7 +438,7 @@ def unsubscribe(data: UnsubIn):
 
 @router.post("/test")
 def test(request: Request, kind: str = "feeding"):
-    """kind=feeding: Beispiel der Futter-Erinnerung. kind=birthday: sendet beide Geburtstags-Nachrichten als Vorschau."""
+    """kind=feeding: Futter-Erinnerung. kind=birthday: beide Geburtstags-Nachrichten. kind=vaccination: Impf-Erinnerung (Vorschau)."""
     if not HAVE_PUSH:
         raise HTTPException(status_code=501, detail="Push ist auf dem Server nicht installiert")
     conn = _db()
@@ -386,7 +460,9 @@ def test(request: Request, kind: str = "feeding"):
             pass
     sent, errors = 0, []
     for s in subs:
-        if kind == "birthday":
+        if kind == "vaccination":
+            msgs = [vaccination_message(s["lang"], 30, "Tollwut", sample["name"], date.today() + timedelta(days=30), 30, sample["id"])]
+        elif kind == "birthday":
             msgs = [birthday_message(s["lang"], k, sample["name"], sample["species"], sample["years"],
                                      date.today() + timedelta(days=BDAY_ADVANCE if k == "pre" else 0), sample["id"])
                     for k in ("pre", "day")]

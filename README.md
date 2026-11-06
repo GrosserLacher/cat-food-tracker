@@ -48,6 +48,9 @@ A self-hosted, mobile-first web tracker (PWA) for seamless documentation and ana
 - **📤 Export:** Full CSV export plus a printable report (save it as PDF) with an all-time food matrix per cat and the last 30 days of vomiting incidents and meals.
 - **🏷️ Renamable:** Set `APP_NAME` at the top of `app/main.py` (or as environment variable) – used for the browser tab, home-screen name, reports and push messages.
 - **🩺 Health data & birthdays:** Per-animal health values (height, weight, temperature, custom fields). The birthday is asked when adding an animal and can only be edited in the master data.
+- **💊 Medication & supplements ("Präparate"):** Quickly log tablets, pastes, powders or flea treatment per animal with a dose and an optional "given together with feeding" flag. Entries show up in the history and the report; the catalog (with default doses) is maintained in the master data.
+- **🐾 Animal profiles:** *Settings → Animals* manages name, species, numeric position, birthday, avatar color, breed, color, sex/neutering status, markings and chip details (number, date, site).
+- **🚑 Medical & vaccination record:** *Health → Medical* (highlighted emergency box for allergies, chronic conditions, permanent medication), *Vaccines* (table with expiry status) and *Values* (charts and custom measurements). Vaccinations expiring within 30 days trigger a push reminder (30 days, 7 days, expiry day).
 - **🔔 Push reminders:** Feeding reminders plus birthday messages (14 days ahead and on the birthday at 09:00 local time, with varying texts).
 - **📑 Custom report:** Multi-select categories (food, snacks, drinks, vomiting, health), animals and period (default 30 days). Each animal's age is shown once (as of export day).
 - **🕒 Automatic Timestamps:** Date and time are recorded for every entry.
@@ -310,7 +313,7 @@ Then open `http://localhost:8000`.
 cat-food-tracker/
 ├── app/
 │   ├── main.py          # FastAPI app (APP_NAME at the top), API, exports
-│   ├── extras.py, health.py, push.py, report.py
+│   ├── extras.py, health.py, cats.py, meds.py, push.py, report.py
 │   └── static/          # Frontend (index.html, PWA assets)
 ├── data/                # Created at runtime
 │   ├── tracker.db       # SQLite database
