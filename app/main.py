@@ -32,6 +32,7 @@ try:
     from app.health import router as health_router, migrate_health
     from app.meds import router as meds_router, migrate_meds
     from app.cats import router as cats_router, migrate_cats
+    from app.findings import router as findings_router, migrate_findings
     from app.push import router as push_router, start_scheduler
     from app.report import router as report_router, REPORT_CSS, FONT_LINK, HERO_CAT
 except ImportError:  # Start ohne Paketstruktur (z. B. "uvicorn main:app")
@@ -40,6 +41,7 @@ except ImportError:  # Start ohne Paketstruktur (z. B. "uvicorn main:app")
     from health import router as health_router, migrate_health
     from meds import router as meds_router, migrate_meds
     from cats import router as cats_router, migrate_cats
+    from findings import router as findings_router, migrate_findings
     from push import router as push_router, start_scheduler
     from report import router as report_router, REPORT_CSS, FONT_LINK, HERO_CAT
 
@@ -170,6 +172,8 @@ migrate_meds()                  # Präparate (Medikamente, Pasten, Pulver, Suppl
 app.include_router(meds_router)
 migrate_cats()                  # erweiterte Tier-Stammdaten (nach migrate_health)
 app.include_router(cats_router)
+migrate_findings()              # Kot (Bristol) und Befunde mit Fotos (Haut, Wunden, Ohren)
+app.include_router(findings_router)
 app.include_router(push_router)  # Push-Erinnerung (braucht das Paket "pywebpush")
 app.include_router(report_router)  # Bericht-Export mit Mehrfachauswahl (Futter, Snacks, Getränke, Spucken, Gesundheit)
 
@@ -479,6 +483,7 @@ def update_cat(cat_id: int, data: CatUpdate):
         c.execute("UPDATE feedings SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
         c.execute("UPDATE vomits SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
         c.execute("UPDATE med_logs SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
+        c.execute("UPDATE findings SET cat_name = ? WHERE cat_name = ?", (new_name, old_name))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()

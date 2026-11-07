@@ -53,6 +53,7 @@ A self-hosted, mobile-first web tracker (PWA) for seamless documentation and ana
 - **🚑 Medical & vaccination record:** *Health → Medical* (highlighted emergency box for allergies, chronic conditions, permanent medication), *Vaccines* (table with expiry status) and *Values* (charts and custom measurements). Vaccinations expiring within 30 days trigger a push reminder (30 days, 7 days, expiry day).
 - **📈 Trend charts:** *Health → Values* shows a real line chart (axes, dates, markers) for any measurement over 3/6/12 months or all time, with change, monthly trend, min/max, a normal-range band for temperature and hints for noticeable weight changes (≥ 5 %) or elevated temperature. The PDF report uses the same chart style.
 - **🩺 Treatment / post-op mode:** Start a treatment per animal (title, start time, reminder interval, vet instructions) under *Health → Medical*. While active, a highlighted banner at the top of the Health tab shows the running time and next reminder, with one-tap log entries (medication, wound check, food intake, general condition). Completing archives it; all entries are grouped under the treatment title in the report. Overdue intervals trigger a push reminder.
+- **📸 Incidents ("Vorfall"):** The former *Vomit* tab now has three sub-tabs: *Vomit*, *Stool* (Bristol scale 1–7, blood/mucus/worm flags, up to 4 photos) and *Findings* (skin, wounds, ears, other – with location and photos). Entries are timestamped, shown in the history (with photo thumbnails, editable) and available as report categories.
 - **🔔 Push reminders:** Feeding reminders plus birthday messages (14 days ahead and on the birthday at 09:00 local time, with varying texts).
 - **📑 Custom report:** Multi-select categories (food, snacks, drinks, vomiting, health), animals and period (default 30 days). Each animal's age is shown once (as of export day).
 - **🕒 Automatic Timestamps:** Date and time are recorded for every entry.
@@ -311,7 +312,7 @@ Then open `http://localhost:8000`.
 cat-food-tracker/
 ├── app/
 │   ├── main.py          # FastAPI app (APP_NAME at the top), API, exports
-│   ├── extras.py, health.py, cats.py, meds.py, push.py, report.py
+│   ├── extras.py, health.py, cats.py, meds.py, findings.py, push.py, report.py
 │   └── static/          # Frontend (index.html, PWA assets)
 ├── data/                # Created at runtime
 │   ├── tracker.db       # SQLite database

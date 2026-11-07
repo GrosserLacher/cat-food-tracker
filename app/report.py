@@ -16,6 +16,7 @@ Dieses Modul stellt ausserdem BASE_CSS, FONT_LINK und HERO_CAT bereit, damit auc
 bestehende Standard-Bericht (main.py) im selben Design erscheint.
 """
 import html
+import json
 import math
 import os
 import re
@@ -36,7 +37,7 @@ DB_PATH = os.path.join(DATA_DIR, "tracker.db")
 router = APIRouter(prefix="/api/export")
 
 KIND_KEYS = ("food", "snack", "drink")
-ALL_KINDS = KIND_KEYS + ("meds", "vomit", "health", "treat")
+ALL_KINDS = KIND_KEYS + ("meds", "vomit", "stool", "finding", "health", "treat")
 DEFAULT_COLORS = ["#f4b183", "#a8d5ba", "#b9a8e8", "#f2a7c3", "#9fcbe8", "#e8d08a"]
 esc = html.escape
 
@@ -111,6 +112,8 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 .av.dog::before,.av.dog::after{top:.05em;width:.5em;height:.9em;border:0;background:var(--ib);border-radius:.15em .15em .5em .5em}
 .av.dog::before{left:-.28em;transform:rotate(10deg)}.av.dog::after{right:-.28em;transform:rotate(-10deg)}
 .pill.k-food{background:#fbe6dd;color:#c8563a}.pill.k-snack{background:#fdf0d5;color:#a8730f}.pill.k-drink{background:#e5edf8;color:#5a7fb8}
+.pill.k-stool{background:#efe4d6;color:#8a5a2b}.pill.k-finding{background:#fde7ee;color:#b0426b}
+.thumbs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.thumbs img{height:70px;width:auto;max-width:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
 .pill.k-treat{background:#dff1f0;color:#2a8079}
 .pill.k-meds{background:#ece6fb;color:#6b52b8}
 .pill.k-vomit{background:#fbe3df;color:#c2453b}.pill.k-health{background:#e1f1e3;color:#3f8f5f}
@@ -138,7 +141,10 @@ h3{font-size:14px;margin:16px 0 8px;break-after:avoid}
 TXT = {
     "de": dict(
         title="Bericht", created="Erstellt am", period="Zeitraum", animals="Tiere",
-        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", meds="Präparate", vomit="Spucken", health="Gesundheit", treat="Behandlungen"),
+        kinds=dict(food="Futter", snack="Snacks", drink="Getränke", meds="Präparate", vomit="Spucken", stool="Kot", finding="Befunde", health="Gesundheit", treat="Behandlungen"),
+        fkind=dict(skin="Haut", wound="Wunde", ear="Ohren", other="Sonstiges"), flags=dict(blood="Blut", mucus="Schleim", worms="Würmer"),
+        bristol_l=["Harte, einzelne Klümpchen", "Klumpige Wurst", "Wurst mit Rissen", "Glatte, weiche Wurst", "Weiche Klümpchen", "Breiig", "Flüssig"],
+        bristol="Bristol", location="Stelle", photos="Fotos", detail="Details",
         t_active="aktiv", t_done="abgeschlossen", t_start="Start", t_end="Ende", t_interval="Intervall", t_every="alle {n} Std.",
         t_none_interval="kein festes Intervall", t_notes="Anweisungen", t_type="Art", t_desc="Beschreibung", t_nologs="Keine Log-Einträge.", t_logs="Einträge",
         med="Präparat", dose="Dosis", with_food="mit Fütterung",
@@ -156,7 +162,10 @@ TXT = {
     ),
     "en": dict(
         title="Report", created="Created on", period="Period", animals="Animals",
-        kinds=dict(food="Food", snack="Snacks", drink="Drinks", meds="Medication", vomit="Vomiting", health="Health", treat="Treatments"),
+        kinds=dict(food="Food", snack="Snacks", drink="Drinks", meds="Medication", vomit="Vomiting", stool="Stool", finding="Findings", health="Health", treat="Treatments"),
+        fkind=dict(skin="Skin", wound="Wound", ear="Ears", other="Other"), flags=dict(blood="Blood", mucus="Mucus", worms="Worms"),
+        bristol_l=["Hard lumps", "Lumpy sausage", "Sausage with cracks", "Smooth, soft sausage", "Soft blobs", "Mushy", "Liquid"],
+        bristol="Bristol", location="Location", photos="Photos", detail="Details",
         t_active="active", t_done="completed", t_start="Start", t_end="End", t_interval="Interval", t_every="every {n} h",
         t_none_interval="no fixed interval", t_notes="Instructions", t_type="Type", t_desc="Description", t_nologs="No log entries.", t_logs="entries",
         med="Medication", dose="Dose", with_food="with feeding",
@@ -326,7 +335,7 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
     for i, r in enumerate(rows):
         if ids is None or r["id"] in ids:
             pets.append(dict(r, color=custom.get(r["id"], DEFAULT_COLORS[i % 6])))
-    show_unknown = bool(unknown) and "vomit" in sel
+    show_unknown = bool(unknown) and ("vomit" in sel or "stool" in sel)
     pet_names = {p["name"] for p in pets}
 
     # Daten
@@ -345,6 +354,19 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         for m in conn.execute("SELECT * FROM med_logs WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, id DESC", (start, end)):
             if m["cat_name"] in pet_names:
                 meds_by_cat.setdefault(m["cat_name"], []).append(m)
+
+    stool_by, find_by = {}, {}
+    if ("stool" in sel or "finding" in sel) and (pets or show_unknown):
+        for f in conn.execute("SELECT * FROM findings WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, id DESC", (start, end)):
+            key = "?" if f["cat_name"] in ("Unbekannt", "Unknown") else f["cat_name"]
+            if key != "?" and key not in pet_names:
+                continue
+            if key == "?" and not show_unknown:
+                continue
+            if f["kind"] == "stool" and "stool" in sel:
+                stool_by.setdefault(key, []).append(f)
+            elif f["kind"] != "stool" and "finding" in sel:
+                find_by.setdefault(key, []).append(f)
 
     treats_by_cat = {}
     if "treat" in sel and pets:
@@ -415,6 +437,48 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         for f in lst:
             out += (f"<tr><td class='nw'>{_fmt_dt(f['timestamp'], t)}</td><td><strong>{esc(f['manufacturer_name'])}</strong> – {esc(f['food_name'])}</td>"
                     f"<td>{rating_pill(f['rating'])}</td><td>{esc(f['notes'] or '–')}</td></tr>")
+        return out + "</tbody></table>"
+
+    def _thumbs(f):
+        try:
+            paths = [x for x in json.loads(f["images"] or "[]") if str(x).startswith("/uploads/")]
+        except ValueError:
+            paths = []
+        return ("<div class='thumbs'>" + "".join(f"<a href='{esc(x)}' target='_blank'><img src='{esc(x)}' alt=''></a>" for x in paths) + "</div>") if paths else ""
+
+    def _bristol(n):
+        cls = "good" if n in (3, 4) else ("ok" if n in (2, 5) else "bad")
+        return f"<span class='pill {cls}'>{t['bristol']} {n} · {esc(t['bristol_l'][n - 1])}</span>"
+
+    def _flags(f):
+        fl = [x for x in (f["details"] or "").split(",") if x in t["flags"]]
+        return "".join(f" <span class='pill bad'>{esc(t['flags'][x])}</span>" for x in fl)
+
+    def stool_section(key):
+        lst = stool_by.get(key, [])
+        h = f"<h3>{esc(t['kinds']['stool'])}</h3>"
+        if not lst:
+            return h + f"<p class='muted'>{t['none_entries']}</p>"
+        out = (h + f"<div class='sum'><span class='pill neutral'>{len(lst)} {_ent(len(lst), t)}</span></div>"
+               f"<table><thead><tr><th style='width:112px'>{t['time']}</th><th>{t['bristol']}</th><th style='width:30%'>{t['note']}</th>"
+               f"<th style='width:28%'>{t['photos']}</th></tr></thead><tbody>")
+        for f in lst:
+            out += (f"<tr><td class='nw'>{_fmt_dt(f['timestamp'], t)}</td><td>{_bristol(f['bristol'] or 4)}{_flags(f)}</td>"
+                    f"<td>{esc(f['notes'] or '–')}</td><td>{_thumbs(f) or '–'}</td></tr>")
+        return out + "</tbody></table>"
+
+    def finding_section(key):
+        lst = find_by.get(key, [])
+        h = f"<h3>{esc(t['kinds']['finding'])}</h3>"
+        if not lst:
+            return h + f"<p class='muted'>{t['none_entries']}</p>"
+        out = (h + f"<div class='sum'><span class='pill neutral'>{len(lst)} {_ent(len(lst), t)}</span></div>"
+               f"<table><thead><tr><th style='width:112px'>{t['time']}</th><th style='width:26%'>{t['category']}</th><th>{t['note']}</th>"
+               f"<th style='width:28%'>{t['photos']}</th></tr></thead><tbody>")
+        for f in lst:
+            loc = f"<div class='muted'>{t['location']}: {esc(f['location'])}</div>" if f["location"] else ""
+            out += (f"<tr><td class='nw'>{_fmt_dt(f['timestamp'], t)}</td><td><span class='pill k-finding'>{esc(t['fkind'].get(f['kind'], f['kind']))}</span>{loc}</td>"
+                    f"<td>{esc(f['notes'] or '–')}</td><td>{_thumbs(f) or '–'}</td></tr>")
         return out + "</tbody></table>"
 
     def treat_section(p):
@@ -517,6 +581,11 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
         for k in food_kinds:
             for f in feeds.get((name, k), []):
                 add(k, f["timestamp"], f"<strong>{esc(f['manufacturer_name'])}</strong> – {esc(f['food_name'])} {rating_pill(f['rating'])}", f["notes"])
+        for f in stool_by.get(name, []):
+            add("stool", f["timestamp"], f"{_bristol(f['bristol'] or 4)}{_flags(f)}{_thumbs(f)}", f["notes"])
+        for f in find_by.get(name, []):
+            loc = f" · {esc(f['location'])}" if f["location"] else ""
+            add("finding", f["timestamp"], f"<strong>{esc(t['fkind'].get(f['kind'], f['kind']))}</strong>{loc}{_thumbs(f)}", f["notes"])
         for m in meds_by_cat.get(name, []):
             wf = f" <span class='pill k-food'>{t['with_food']}</span>" if m["with_food"] else ""
             add("meds", m["timestamp"], f"<strong>{esc(m['med_name'])}</strong>{(' · ' + esc(m['dose'])) if m['dose'] else ''}{wf}", m["notes"])
@@ -564,7 +633,7 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
                 pass
         else:
             sub.append(t["no_birthday"])
-        tl = mixed and bool(food_kinds or "meds" in sel or "vomit" in sel)   # Zeitverlauf nur, wenn es neben Gesundheit etwas zu mischen gibt
+        tl = mixed and bool(food_kinds or {"meds", "vomit", "stool", "finding"} & set(sel))   # Zeitverlauf nur, wenn es neben Gesundheit etwas zu mischen gibt
         body = health_section(p, tables=not tl) if "health" in sel else ""   # Gesundheit direkt unter dem Tiernamen
         if "treat" in sel:
             body += treat_section(p)   # Behandlungen: Log-Einträge gruppiert unter dem jeweiligen Titel
@@ -576,13 +645,17 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
                 body += med_section(p["name"])
             if "vomit" in sel:
                 body += vomit_section(p["name"])
+            if "stool" in sel:
+                body += stool_section(p["name"])
+            if "finding" in sel:
+                body += finding_section(p["name"])
         return (f"<section class='pet'><div class='pethead'><span class='av{' dog' if dog else ''}' style='{style}'>{esc(p['name'][:1].upper())}</span>"
                 f"<div><h2>{esc(p['name'])}</h2><div class='sub'>{' · '.join(sub)}</div></div></div>{body}</section>")
 
     blocks = "".join(pet_block(p) for p in pets)
     if show_unknown:
         blocks += (f"<section class='pet'><div class='pethead'><span class='av' style='--ib:#d9c7b8;--ct:#1d1a17'>?</span>"
-                   f"<div><h2>{t['unknown']}</h2><div class='sub'>{t['unknown_note']}</div></div></div>{vomit_section('?')}</section>")
+                   f"<div><h2>{t['unknown']}</h2><div class='sub'>{t['unknown_note']}</div></div></div>{vomit_section('?') if 'vomit' in sel else ''}{stool_section('?') if 'stool' in sel else ''}</section>")
     if not blocks:
         blocks = f"<p class='muted'>{t['none_entries']}</p>"
 
@@ -591,6 +664,12 @@ def export_report(kinds: str = ",".join(ALL_KINDS), animals: Optional[str] = Non
     for k in food_kinds:
         n_k = sum(len(v) for (n, kk), v in feeds.items() if kk == k)
         kpis.append((t["kinds"][k], n_k, _ent(n_k, t)))
+    if "stool" in sel:
+        n_s = sum(len(v) for k, v in stool_by.items() if k != "?")
+        kpis.append((t["kinds"]["stool"], n_s, _ent(n_s, t)))
+    if "finding" in sel:
+        n_f = sum(len(v) for k, v in find_by.items() if k != "?")
+        kpis.append((t["kinds"]["finding"], n_f, _ent(n_f, t)))
     if "treat" in sel:
         n_t = sum(len(v) for v in treats_by_cat.values())
         kpis.append((t["kinds"]["treat"], n_t, ""))

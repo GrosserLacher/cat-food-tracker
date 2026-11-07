@@ -310,6 +310,21 @@ window.I18N = {
     'wird archiviert und bleibt für den Tierarztbericht erhalten.': 'will be archived and kept for the vet report.',
     'wird samt aller Log-Einträge endgültig gelöscht.': 'will be permanently deleted together with all log entries.',
 
+    /* Vorfall: Kot (Bristol) und Befunde mit Fotos */
+    'Vorfall': 'Incident', 'Kot': 'Stool', 'Befunde': 'Findings', 'Kot · Bristol': 'Stool · Bristol', 'Bristol-Stuhlform': 'Bristol stool form',
+    'Harte, einzelne Klümpchen': 'Hard lumps', 'Klumpige Wurst': 'Lumpy sausage', 'Wurst mit Rissen': 'Sausage with cracks',
+    'Glatte, weiche Wurst': 'Smooth, soft sausage', 'Weiche Klümpchen': 'Soft blobs', 'Breiig, ohne feste Form': 'Mushy, no solid form',
+    'Flüssig, ohne feste Stücke': 'Liquid, no solid pieces', 'Verstopfung': 'Constipation', 'leichte Verstopfung': 'mild constipation',
+    'normal': 'normal', 'ideal': 'ideal', 'eher zu weich': 'a bit too soft', 'leichter Durchfall': 'mild diarrhea', 'Durchfall': 'Diarrhea',
+    'Auffälligkeiten (optional)': 'Abnormalities (optional)', 'Blut': 'Blood', 'Schleim': 'Mucus', 'Würmer': 'Worms',
+    'Fotos (bis zu 4)': 'Photos (up to 4)', 'Weitere Fotos hinzufügen': 'Add more photos', 'Details': 'Details',
+    'Beschreibung (optional)': 'Description (optional)', 'Kot speichern': 'Save stool entry', 'Befund speichern': 'Save finding',
+    'Die Bristol-Skala dient nur der Orientierung. Bei anhaltenden Auffälligkeiten oder Blut bitte tierärztlich abklären.': 'The Bristol scale is only a guide. If abnormalities persist or there is blood, please consult a vet.',
+    'Was ist aufgefallen?': 'What did you notice?', 'Haut': 'Skin', 'Wunde': 'Wound', 'Ohren': 'Ears', 'Stelle (optional)': 'Location (optional)', 'Stelle': 'Location',
+    'Bitte ein Tier wählen': 'Please choose an animal', 'Bitte die Bristol-Stufe wählen': 'Please choose the Bristol level',
+    'Kot dokumentiert 💩': 'Stool documented 💩', 'Befund dokumentiert 📷': 'Finding documented 📷', 'Maximal 4 Fotos pro Eintrag': 'Maximum 4 photos per entry',
+    'Kot bearbeiten': 'Edit stool entry', 'Befund bearbeiten': 'Edit finding', 'Eintrag aktualisiert ✓': 'Entry updated ✓',
+
     /* Erinnerungen (Push) */
     'Erinnerungen': 'Reminders', 'Erinnerungen aktivieren': 'Enable reminders', 'Testnachricht senden': 'Send test message',
     'Deaktivieren': 'Disable', 'Erinnerungen aktiviert': 'Reminders enabled', 'Erinnerungen deaktiviert': 'Reminders disabled',

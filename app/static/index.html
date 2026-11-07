@@ -229,9 +229,9 @@ const vVomit=()=>{const r=S.res;return`
 <button class="btn" data-a="saveV">Spuck-Ereignis speichern</button>
 ${r?`<div class="card" style="margin-top:14px"><h2>🔍 Ergebnis der Zuordnung</h2>${!rel(r.v)?`<div class="info" style="margin:0">ℹ️ Nicht futterrelevant – keine Mahlzeiten zugeordnet.</div>`:r.l.length?`<div class="warn" style="margin:0">⚠️ Gefüttert in den 12 h davor:<br>${lines(r.l)}</div>`:`<div class="info" style="margin:0">Keine Mahlzeit in den 12 h davor gefunden.</div>`}</div>`:''}`};
 
-const vHist=()=>{const it=[...B.map(b=>({k:'f',ts:b.ts,b})),...V.map(v=>({k:'v',ts:v.ts,v})),...MG.filter(m=>!HD||m.cats.some(n=>CATS.some(c=>c.name==n))).map(m=>({k:'m',ts:m.ts,m}))].filter(x=>S.filter=='all'||x.k==S.filter).filter(x=>!S.hc||S.hc=='Alle'||(x.k=='f'?S.hc in x.b.cats:x.k=='m'?x.m.cats.includes(S.hc):x.v.cat==S.hc)).sort((a,b)=>b.ts-a.ts);
-return`<div class="row" style="margin-bottom:14px">${[['all','Alle'],['f','Fütterungen'],['m','Präparate'],['v','Spuck-Ereignisse']].map(([k,l])=>`<button class="chip ${S.filter==k?'on':''}" data-a="filt" data-v="${k}" style="padding:7px 13px">${l}</button>`).join('')}</div>`+
-(it.map(x=>x.k=='m'?MH(x.m):x.k=='f'?`<div class="card"><div class="top"><div><b>${esc(x.b.food)}</b><div class="mut">${KL[x.b.k||'food']} · ${fmt(x.ts)}</div></div><button class="x" data-a="del" data-k="f" data-id="${x.b.id}">🗑️</button></div>
+const vHist=()=>{const it=[...B.map(b=>({k:'f',ts:b.ts,b})),...V.map(v=>({k:'v',ts:v.ts,v})),...MG.filter(m=>!HD||m.cats.some(n=>CATS.some(c=>c.name==n))).map(m=>({k:'m',ts:m.ts,m})),...FD.filter(f=>!HD||f.cat=='Unbekannt'||CATS.some(c=>c.name==f.cat)).map(f=>({k:f.kind=='stool'?'s':'b',ts:f.ts,x:f}))].filter(x=>S.filter=='all'||x.k==S.filter).filter(x=>!S.hc||S.hc=='Alle'||(x.k=='f'?S.hc in x.b.cats:x.k=='m'?x.m.cats.includes(S.hc):x.k=='s'||x.k=='b'?x.x.cat==S.hc:x.v.cat==S.hc)).sort((a,b)=>b.ts-a.ts);
+return`<div class="row" style="margin-bottom:14px">${[['all','Alle'],['f','Fütterungen'],['m','Präparate'],['v','Spuck-Ereignisse'],['s','Kot'],['b','Befunde']].map(([k,l])=>`<button class="chip ${S.filter==k?'on':''}" data-a="filt" data-v="${k}" style="padding:7px 13px">${l}</button>`).join('')}</div>`+
+(it.map(x=>x.k=='s'||x.k=='b'?FDH(x.x):x.k=='m'?MH(x.m):x.k=='f'?`<div class="card"><div class="top"><div><b>${esc(x.b.food)}</b><div class="mut">${KL[x.b.k||'food']} · ${fmt(x.ts)}</div></div><button class="x" data-a="del" data-k="f" data-id="${x.b.id}">🗑️</button></div>
 <div class="row" style="margin-top:8px">${Object.entries(x.b.cats).map(([c,r])=>`<span class="pill r${rc(r)}">${esc(c)} · ${esc(R[r].e+' '+R[r].l)}</span>`).join('')}</div>${x.b.note?`<div class="mut" style="margin-top:6px">${esc(x.b.note)}</div>`:''}</div>`:
 (v=>{const l=rel(v)?lk(v):[];return`<div class="card"><div class="top"><div><b>${VT[v.type].e} ${esc(VT[v.type].l)}</b> · ${esc(v.cat)}<div class="mut">${fmt(v.ts)}${v.note?' · '+esc(v.note):''}</div></div><button class="x" data-a="del" data-k="v" data-id="${v.id}">🗑️</button></div>
 ${v.img?`<img class="thumb" src="${v.img}" alt="">`:''}${rel(v)?(l.length?`<div class="warn">⚠️ Mahlzeiten in den 12 h davor:<br>${lines(l)}</div>`:`<div class="info">Keine Mahlzeit in den 12 h davor.</div>`):''}</div>`})(x.v)).join('')||'<p class="mut">Noch keine Einträge</p>')};
@@ -285,9 +285,9 @@ ${CK.map(([k,l])=>`<label class="cp"><span>${l}</span><input type="color" data-c
 <div class="card"><h2>Header-Tier</h2><p class="mut" style="margin-top:0">Wähle ein oder mehrere Tiere. Beim Öffnen wechselt die App zufällig zwischen ihnen.</p>${artChips()}${hdr()[1]=='none'?'':`<div class="row" style="margin-top:14px;justify-content:space-between">${[['sleepy','Morgens'],['wake','Tagsüber'],['happy','Abends'],['sleep','Nachts']].map(([s,l])=>`<div class="cpvw"><div class="cpv" data-s="${s}"></div>${l}</div>`).join('')}</div>`}</div>
 <button class="btn gh" data-a="dreset">Design zurücksetzen</button>`};
 function render(){const h=new Date().getHours();const gr=greet();$('#hi').textContent=gr[0];$('#sub').textContent=gr[1];$('#hav').innerHTML=CATS.map(c=>`<span class="av" style="${cst(c)}" title="${esc(c.name)}">${esc(c.name[0])}</span>`).join('');
-const a=$('#app');a.innerHTML={feed:()=>S.pm?vMeds():vFeed(),vomit:vVomit,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,report:vReport,account:()=>'',pets:vPets,health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
+const a=$('#app');a.innerHTML={feed:()=>S.pm?vMeds():vFeed(),vomit:vIncident,hist:vHist,stats:vStats,data:vData,design:vDesign,export:vExport,report:vReport,account:()=>'',pets:vPets,health:vHealth}[S.tab]();a.querySelectorAll('h2').forEach(h=>{if(/^[^\p{L}\p{N}]/u.test(h.textContent))h.textContent=h.textContent.replace(/^[^\p{L}\p{N}]+/u,'')});
 post();if(S.in){a.classList.add('in');setTimeout(()=>a.classList.remove('in'),600);S.in=0}
-$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Spucken'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&(S.tab=='design'||S.tab=='account'||S.tab=='pets'))||(k=='hist'&&(S.tab=='stats'||S.tab=='export'||S.tab=='report'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
+$('#tabs').innerHTML=[['feed','<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3"/>','Füttern'],['vomit','<path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/>','Vorfall'],['health','<path d="M3 12h4l2-5 4 10 2-5h6"/>','Gesundheit'],['hist','<path d="M5 20V10M12 20V4M19 20v-7"/>','Übersicht'],['data','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>','Einstellungen']].map(([k,i,l])=>`<button class="${S.tab==k||(k=='data'&&(S.tab=='design'||S.tab=='account'||S.tab=='pets'))||(k=='hist'&&(S.tab=='stats'||S.tab=='export'||S.tab=='report'))?'on':''}" data-a="tab" data-v="${k}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${i}</svg></span>${l}</button>`).join('')}
 
 const val=s=>{const e=$(s);return e?e.value.trim():''};
 const ren=(o,n)=>{B.forEach(b=>{if(o in b.cats){b.cats[n]=b.cats[o];delete b.cats[o]}});V.forEach(v=>{if(v.cat==o)v.cat=n});if(o in S.sel){S.sel[n]=S.sel[o];delete S.sel[o]}if(S.vcat==o)S.vcat=n;if(S.sc==o)S.sc=n};
@@ -388,7 +388,7 @@ async function API(m,u,b,f){const o={method:m,credentials:'same-origin',headers:
 const r=await fetch(u,o);if(r.status==401&&u!='/api/login'){showLogin(false);throw new Error('401')}
 if(!r.ok){let d='Fehler '+r.status;try{d=(await r.json()).detail||d}catch(e){}toast(d);throw new Error(d)}return r.json()}
 async function load(){const g=u=>API('GET',u);
-const [an,fo,sn,dr,fd,vm,vt,rl,dd,md,ml]=await Promise.all([g('/api/animals'),g('/api/catalog?kind=food'),g('/api/catalog?kind=snack'),g('/api/catalog?kind=drink'),g('/api/feedings?limit=5000'),g('/api/vomits?limit=2000'),g('/api/vomit-types?include_hidden=true'),g('/api/rating-levels'),g('/api/default-drink'),g('/api/meds'),g('/api/med-logs?limit=5000')]);
+const [an,fo,sn,dr,fd,vm,vt,rl,dd,md,ml,fdl]=await Promise.all([g('/api/animals'),g('/api/catalog?kind=food'),g('/api/catalog?kind=snack'),g('/api/catalog?kind=drink'),g('/api/feedings?limit=5000'),g('/api/vomits?limit=2000'),g('/api/vomit-types?include_hidden=true'),g('/api/rating-levels'),g('/api/default-drink'),g('/api/meds'),g('/api/med-logs?limit=5000'),g('/api/findings?limit=3000')]);
 CATS=an.map((a,i)=>({id:a.id,name:a.name,sp:a.species,h:HU[i%6],f:FC[i%6],col:DC[i%6]}));
 const mp=l=>l.map(m=>({id:m.id,n:m.name,f:m.foods.map(x=>x.name),fi:m.foods.map(x=>x.id)}));
 CAT.food=mp(fo);CAT.snack=mp(sn);CAT.drink=mp(dr);M=CAT[S.kind];
@@ -397,7 +397,7 @@ V=vm.map(x=>({id:x.id,ts:new Date(x.timestamp).getTime(),cat:x.cat_name,type:x.v
 R={};rl.forEach(x=>{R[x.score]={l:x.label,e:x.emoji}});
 VT={};vt.forEach(x=>{VT[x.key]={e:x.emoji,l:x.label,r:x.relevant?1:0,hid:x.hidden?1:0}});
 S.pr.drink=dd.name;
-MED=md.map(x=>({id:x.id,n:x.name,d:x.dose||''}));const gm2={};ml.forEach(x=>{(gm2[x.batch_id]=gm2[x.batch_id]||{id:x.batch_id,ts:new Date(x.timestamp).getTime(),med:x.med_name,dose:x.dose||'',wf:x.with_food,note:x.notes||'',cats:[]}).cats.push(x.cat_name)});MG=Object.values(gm2);
+MED=md.map(x=>({id:x.id,n:x.name,d:x.dose||''}));const gm2={};ml.forEach(x=>{(gm2[x.batch_id]=gm2[x.batch_id]||{id:x.batch_id,ts:new Date(x.timestamp).getTime(),med:x.med_name,dose:x.dose||'',wf:x.with_food,note:x.notes||'',cats:[]}).cats.push(x.cat_name)});MG=Object.values(gm2);FD=fdl.map(x=>({id:x.id,cat:x.cat_name,kind:x.kind,bristol:x.bristol,flags:x.details||[],loc:x.location||'',ts:new Date(x.timestamp).getTime(),note:x.notes||'',imgs:x.images||[]}));
 if(S.med!=null&&!MED.some(m=>m.id==S.med))S.med=null;Object.keys(S.msel).forEach(k=>{if(!CATS.some(c=>c.name==k))delete S.msel[k]});if(S.man>=M.length)S.man=0;if(M[S.man]&&S.food>=M[S.man].f.length)S.food=0;
 if(S.vcat!='Unbekannt'&&!CATS.some(c=>c.name==S.vcat))S.vcat=CATS[0]?CATS[0].name:'Unbekannt';
 Object.keys(S.sel).forEach(k=>{if(!CATS.some(c=>c.name==k))delete S.sel[k]})}
@@ -409,7 +409,7 @@ save=()=>{clearTimeout(SAVE_T);SAVE_T=setTimeout(()=>API('PUT','/api/prefs',{ui:
 Object.assign(A,{
 saveF:T(async()=>{const m=M[S.man];if(!m||m.fi[S.food]===undefined||!Object.keys(S.sel).length)return;const cr={...S.sel};await API('POST','/api/feedings',{cat_ratings:cr,manufacturer_id:m.id,food_id:m.fi[S.food],notes:S.note,timestamp:S.ft||nowIso(),kind:S.kind});S.sel=selAll();S.note='';S.ft='';return()=>toast(fbFeed(cr))}),
 saveV:T(async()=>{const fd=new FormData();fd.append('cat_name',S.vcat);fd.append('vomit_type',S.vtype);fd.append('timestamp',S.vt||nowIso());fd.append('notes',S.vnote);if(S.vfile)fd.append('image',S.vfile);const r=await API('POST','/api/vomits',undefined,fd);S.vnote='';S.vimg=null;S.vfile=null;S.vt='';return()=>{const v=V.find(x=>x.id==r.id);if(v){S.res={v,l:lk(v)};toast(fbVomit(v))}}}),
-del:T(async d=>{await API('DELETE',d.k=='f'?'/api/feedings/batch/'+d.id:d.k=='m'?'/api/med-logs/batch/'+d.id:'/api/vomits/'+d.id);toast('Gel\u00f6scht')}),
+del:T(async d=>{await API('DELETE',d.k=='f'?'/api/feedings/batch/'+d.id:d.k=='m'?'/api/med-logs/batch/'+d.id:d.k=='s'||d.k=='b'?'/api/findings/'+d.id:'/api/vomits/'+d.id);toast('Gel\u00f6scht')}),
 addCat:T(async()=>{const v=val('#ncat');if(!v)return;await API('POST','/api/animals',{name:v,species:NEWSP,birthday:val('#nbday')||null});return()=>{if(S.pr.autoAll)S.sel[v]=NR();toast(pick(nameHint).replace('X',v))}}),
 delCat:T(async d=>{const c=CATS.find(x=>x.id==d.i);await API('DELETE','/api/cats/'+d.i);delete S.sel[c.name];if(S.vcat==c.name)S.vcat='Unbekannt';S.sc='Alle'}),
 sp:T(async d=>{const c=CATS.find(x=>x.id==d.i),n=c.sp=='dog'?'cat':'dog';await API('PUT','/api/animals/'+d.i,{species:n});toast(c.name+(n=='dog'?' ist jetzt ein Hund \ud83d\udc36':' ist jetzt eine Katze \ud83d\udc31'))}),
@@ -473,7 +473,7 @@ const _p3=post2;
 post2=function(a){_p3(a);
 if(S.tab=='feed'){const h=[...a.querySelectorAll('h2')].find(x=>x.textContent.startsWith('Notiz'));if(h)h.parentElement.insertAdjacentHTML('beforeend',`<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="ft" value="${S.ft||nowIso()}">`);
 if(!S.pm&&S.kind=='food'){const r=rotation();if(r.length&&a.firstElementChild)a.firstElementChild.insertAdjacentHTML('afterend',`<div class="card"><h2>Rotations-Vorschlag: Was gibt\u2019s heute?</h2><p class="mut" style="margin-top:0">Gut bewertet, vertr\u00e4glich und am l\u00e4ngsten nicht im Napf</p><div class="row">${r.map(x=>`<button class="chip" data-a="sug" data-v="${esc(x.k)}" style="padding:7px 12px;font-size:13px">${esc(x.k)} \u00b7 \u00d8 ${x.avg.toFixed(1)} \u00b7 ${x.days?'vor '+x.days+' d':'heute'}</button>`).join('')}</div></div>`)}}
-if(S.tab=='vomit'){const h=[...a.querySelectorAll('h2')].find(x=>x.textContent.startsWith('Foto'));if(h)h.parentElement.insertAdjacentHTML('beforeend',`<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="vt" value="${S.vt||nowIso()}">`)}
+if(S.tab=='vomit'&&S.vs=='vomit'){const h=[...a.querySelectorAll('h2')].find(x=>x.textContent.startsWith('Foto'));if(h)h.parentElement.insertAdjacentHTML('beforeend',`<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="vt" value="${S.vt||nowIso()}">`)}
 if(S.tab=='stats')statsExtra(a)};
 /* ===== Sprache (Texte in /static/i18n.js) ===== */
 const L10N=window.I18N||{languages:{de:'Deutsch'},locale:{de:'de-DE'},de:{}};
@@ -526,7 +526,7 @@ const _p4=post2;
 post2=function(a){_p4(a);
 if(['hist','stats','vomit'].includes(S.tab))a.insertAdjacentHTML('afterbegin',`<div class="cp" style="border:0;padding:0 0 10px"><span>Gelöschte Tiere ausblenden</span><label class="sw"><input type="checkbox" data-e="phd" ${HD?'checked':''}><i></i></label></div>`);
 if(S.tab=='hist'){a.insertAdjacentHTML('afterbegin',`<div class="row" style="margin-bottom:12px"><button class="chip ${!S.hc||S.hc=='Alle'?'on':''}" data-a="hfilt" data-v="Alle" style="padding:7px 13px">Alle Tiere</button>${CATS.map(c=>cchip(c,S.hc==c.name,'hfilt')).join('')}</div>`);
-a.querySelectorAll('button[data-a=del][data-k]').forEach(btn=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:6px;align-items:center';const e=document.createElement('button');e.className='mv';e.dataset.a=btn.dataset.k=='f'?'edit':btn.dataset.k=='m'?'medit':'vedit';e.dataset.id=btn.dataset.id;e.setAttribute('aria-label','Bearbeiten');e.textContent='✎';btn.replaceWith(w);w.append(e,btn)})}
+a.querySelectorAll('button[data-a=del][data-k]').forEach(btn=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:6px;align-items:center';const e=document.createElement('button');e.className='mv';e.dataset.a=btn.dataset.k=='f'?'edit':btn.dataset.k=='m'?'medit':btn.dataset.k=='s'||btn.dataset.k=='b'?'fedit':'vedit';e.dataset.id=btn.dataset.id;e.setAttribute('aria-label','Bearbeiten');e.textContent='✎';btn.replaceWith(w);w.append(e,btn)})}
 if(S.tab=='feed'&&!S.pm)a.insertAdjacentHTML('beforeend',previewCard());
 if(S.tab=='feed'&&S.pm&&MG.length)a.insertAdjacentHTML('beforeend',`<div class="card"><div class="top"><h2 style="margin:0">Zuletzt gegeben</h2><button class="chip" data-a="tab" data-v="hist" style="padding:7px 12px;font-size:13px">Alle im Verlauf ansehen →</button></div>${[...MG].sort((a,b)=>b.ts-a.ts).slice(0,3).map(m=>`<div style="margin-top:10px"><b>💊 ${esc(m.med)}</b>${m.dose?' · '+esc(m.dose):''}<div class="mut">${esc(m.cats.join(', '))} · ${fmt(m.ts)}</div></div>`).join('')}</div>`);
 if(S.tab=='design'){const r=a.querySelector('[data-a=dreset]');if(r)r.insertAdjacentHTML('beforebegin',langCard()+themeCard())}};
@@ -598,9 +598,9 @@ CONF.delHF=d=>['Feld l\u00f6schen?',`\u201e${(HF.fields.find(f=>f.id==d.id)||{})
 E.bday=T(async t=>{await API('PUT','/api/health/birthday/'+t.dataset.i,{birthday:t.value||null})});
 
 /* ===== Bericht: Kategorien, Tiere und Zeitraum wählen ===== */
-const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['meds','Präparate'],['vomit','Spucken'],['health','Gesundheit'],['treat','Behandlungen']];
-S.rp={k:{food:1,snack:1,drink:1,meds:1,vomit:1,health:1,treat:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
-const hasUnk=()=>V0.some(v=>v.cat=='Unbekannt');
+const RPK=[['food','Futter'],['snack','Snacks'],['drink','Getränke'],['meds','Präparate'],['vomit','Spucken'],['stool','Kot'],['finding','Befunde'],['health','Gesundheit'],['treat','Behandlungen']];
+S.rp={k:{food:1,snack:1,drink:1,meds:1,vomit:1,stool:1,finding:1,health:1,treat:1},x:{},u:1,days:30,cust:0,from:'',to:'',mix:0};
+const hasUnk=()=>V0.some(v=>v.cat=='Unbekannt')||FD.some(f=>f.cat=='Unbekannt');
 const vReport=()=>{const r=S.rp,td=nowIso().slice(0,10),all=CATS.every(c=>!r.x[c.id]);
 return`<div class="card"><h2>Bericht zusammenstellen</h2><p class="mut" style="margin-top:0">Wähle Kategorien, Tiere und Zeitraum. Der Bericht öffnet sich als druckfertige Seite („Als PDF speichern“). Das Alter eines Tieres steht einmal im Tierkopf (Stand: heute).</p>
 <div class="mut rph" style="margin-top:0">Kategorien</div><div class="row">${RPK.map(([k,l])=>`<button class="chip ${r.k[k]?'on':''}" data-a="rpk" data-v="${k}">${l}</button>`).join('')}</div>
@@ -794,6 +794,50 @@ setInterval(()=>document.querySelectorAll('[data-tick]').forEach(e=>{e.textConte
 document.head.insertAdjacentHTML('beforeend','<style>.tbanner{border:2px solid #d4493e;background:linear-gradient(135deg,rgba(212,73,62,.16),rgba(246,207,211,.38));border-radius:20px;padding:14px;margin-bottom:14px;box-shadow:0 0 0 4px rgba(212,73,62,.08)}'+
 '.tdot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#d4493e;animation:tp 1.6s infinite}@keyframes tp{0%{box-shadow:0 0 0 0 rgba(212,73,62,.6)}70%{box-shadow:0 0 0 9px rgba(212,73,62,0)}100%{box-shadow:0 0 0 0 rgba(212,73,62,0)}}'+
 '@media(prefers-reduced-motion:reduce){.tdot{animation:none}}.tnote{margin-top:8px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.55);border:1px dashed #d4493e;white-space:pre-wrap}</style>');
+
+/* ===== Vorfall: Spucken · Kot (Bristol) · Befunde (Haut, Wunden, Ohren) mit Fotos ===== */
+let FD=[];
+const BR=[[1,'Harte, einzelne Klümpchen','Verstopfung'],[2,'Klumpige Wurst','leichte Verstopfung'],[3,'Wurst mit Rissen','normal'],[4,'Glatte, weiche Wurst','ideal'],[5,'Weiche Klümpchen','eher zu weich'],[6,'Breiig, ohne feste Form','leichter Durchfall'],[7,'Flüssig, ohne feste Stücke','Durchfall']];
+const brc=n=>n==3||n==4?3:n==2||n==5?2:1;
+const FK={skin:['🩹','Haut'],wound:['🩸','Wunde'],ear:['👂','Ohren'],other:['📌','Sonstiges']},FL={blood:'Blut',mucus:'Schleim',worms:'Würmer'};
+Object.assign(S,{vs:'vomit',xc:null,xk:'skin',xb:null,xd:{},xl:'',xn:'',xt:'',xf:[],xp:[]});
+const xReset=()=>{S.xp.forEach(u=>URL.revokeObjectURL(u));Object.assign(S,{xb:null,xd:{},xl:'',xn:'',xt:'',xf:[],xp:[]})};
+const thumbs=f=>f.imgs&&f.imgs.length?`<div class="fthumbs">${f.imgs.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" alt="Foto"></a>`).join('')}</div>`:'';
+const FDH=f=>{const st=f.kind=='stool',b=st?BR[(f.bristol||4)-1]:null;
+return`<div class="card"><div class="top"><div><b>${st?'💩 Kot · Bristol '+f.bristol:FK[f.kind][0]+' '+FK[f.kind][1]}</b>${st?` <span class="pill r${brc(f.bristol)}">${b[2]}</span>`:''}<div class="mut">${esc(f.cat)} · ${fmt(f.ts)}${f.loc?' · '+esc(f.loc):''}</div></div><button class="x" data-a="del" data-k="${st?'s':'b'}" data-id="${f.id}">🗑️</button></div>
+${f.flags.length?`<div class="row" style="margin-top:8px">${f.flags.map(k=>`<span class="pill r1">${FL[k]||esc(k)}</span>`).join('')}</div>`:''}${f.note?`<div class="mut" style="margin-top:6px">${esc(f.note)}</div>`:''}${thumbs(f)}</div>`};
+const catRow=()=>`<div class="card"><h2>🐱 Welche Katze?</h2><div class="row">${CATS.map(c=>cchip(c,S.xc==c.name,'xcat')).join('')}<button class="chip ${S.xc=='Unbekannt'?'on':''}" data-a="xcat" data-v="Unbekannt">Unbekannt</button></div></div>`;
+const photoBox=()=>`<div class="card"><h2>📷 Fotos (bis zu 4)</h2>${S.xp.length?`<div class="fthumbs">${S.xp.map((u,i)=>`<div style="position:relative"><img src="${u}" alt="Vorschau"><button class="x" data-a="xrm" data-i="${i}" aria-label="Entfernen" style="position:absolute;top:3px;right:3px"></button></div>`).join('')}</div>`:''}${S.xf.length<4?`<label class="photo" style="margin-top:${S.xp.length?10:0}px"><input type="file" id="ximg" accept="image/*" multiple>${S.xf.length?'Weitere Fotos hinzufügen':'Foto aufnehmen oder auswählen'}</label>`:''}</div>`;
+const xTail=ph=>`<div class="card"><h2>📝 Details</h2><input type="text" id="xn" value="${esc(S.xn)}" placeholder="${ph}"><div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="xt" value="${S.xt||nowIso()}"></div>`;
+const vStool=()=>catRow()+`<div class="card"><h2>💩 Bristol-Stuhlform</h2><div class="grid2">${BR.map(b=>`<button class="vt ${S.xb==b[0]?'on':''}" data-a="xb" data-v="${b[0]}">${b[0]} · ${b[1]}<small>${b[2]}</small></button>`).join('')}</div>
+<div class="mut" style="margin:12px 0 6px">Auffälligkeiten (optional)</div><div class="row">${Object.entries(FL).map(([k,l])=>`<button class="chip ${S.xd[k]?'on':''}" data-a="xflag" data-v="${k}">${l}</button>`).join('')}</div></div>`+photoBox()+xTail('Notiz (optional)')+`<button class="btn" data-a="saveX" ${S.xc&&S.xb?'':'disabled'}>Kot speichern</button><p class="mut" style="margin:12px 0 0;font-size:12px">Die Bristol-Skala dient nur der Orientierung. Bei anhaltenden Auffälligkeiten oder Blut bitte tierärztlich abklären.</p>`;
+const vFinding=()=>catRow()+`<div class="card"><h2>🔎 Was ist aufgefallen?</h2><div class="grid2">${Object.entries(FK).map(([k,[e,l]])=>`<button class="vt ${S.xk==k?'on':''}" data-a="xkind" data-v="${k}">${e} ${l}</button>`).join('')}</div>
+<div class="mut" style="margin:12px 0 6px">Stelle (optional)</div><input type="text" id="xl" value="${esc(S.xl)}" placeholder="z. B. linkes Ohr, Rücken"></div>`+photoBox()+xTail('Beschreibung (optional)')+`<button class="btn" data-a="saveX" ${S.xc?'':'disabled'}>Befund speichern</button>`;
+const vIncident=()=>`<div class="row" style="margin-bottom:12px;flex-wrap:nowrap;gap:6px">${[['vomit','Spucken'],['stool','Kot'],['finding','Befunde']].map(([k,l])=>`<button class="chip ${S.vs==k?'on':''}" data-a="vsub" data-v="${k}" style="flex:1 1 0;min-width:0;padding:8px 4px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</button>`).join('')}</div>`+(S.vs=='stool'?vStool():S.vs=='finding'?vFinding():vVomit());
+Object.assign(A,{
+vsub:d=>{S.vs=d.v},xcat:d=>{S.xc=d.v},xb:d=>{S.xb=+d.v},xflag:d=>{S.xd[d.v]=S.xd[d.v]?0:1},xkind:d=>{S.xk=d.v},
+xrm:d=>{URL.revokeObjectURL(S.xp[d.i]);S.xf.splice(d.i,1);S.xp.splice(d.i,1)},
+saveX:T(async()=>{const st=S.vs=='stool';if(!S.xc)return toast('Bitte ein Tier wählen');if(st&&!S.xb)return toast('Bitte die Bristol-Stufe wählen');
+const fd=new FormData();fd.append('cat_name',S.xc);fd.append('kind',st?'stool':S.xk);if(st){fd.append('bristol',S.xb);fd.append('details',Object.keys(S.xd).filter(k=>S.xd[k]).join(','))}fd.append('location',st?'':S.xl);fd.append('notes',S.xn);fd.append('timestamp',S.xt||nowIso());S.xf.forEach(f=>fd.append('images',f));
+await API('POST','/api/findings',undefined,fd);xReset();return()=>toast(st?'Kot dokumentiert 💩':'Befund dokumentiert 📷')})});
+document.addEventListener('input',e=>{const t=e.target;if(t.id=='xn')S.xn=t.value;else if(t.id=='xl')S.xl=t.value;else if(t.id=='xt')S.xt=t.value});
+document.addEventListener('change',e=>{const t=e.target;if(t.id=='ximg'&&t.files.length){const room=4-S.xf.length;[...t.files].slice(0,room).forEach(f=>{S.xf.push(f);S.xp.push(URL.createObjectURL(f))});if(t.files.length>room)toast('Maximal 4 Fotos pro Eintrag');render()}});
+/* Eintrag bearbeiten (Fotos bleiben unverändert) */
+let FE=null;
+function feRender(){let el=$('#fem');if(!FE){if(el)el.remove();return}if(!el){document.body.insertAdjacentHTML('beforeend','<div id="fem"></div>');el=$('#fem')}
+el.style.cssText='position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;overflow:auto';const st=FE.kind=='stool';
+el.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0;max-height:92vh;overflow:auto"><h2>${st?'Kot':'Befund'} bearbeiten</h2><div class="mut" style="margin-bottom:10px"><b>${esc(FE.cat)}</b></div>
+${st?`<div class="row" style="gap:6px">${BR.map(b=>`<button class="chip ${FE.bristol==b[0]?'on':''}" data-a="fesel" data-v="${b[0]}" style="padding:7px 12px" title="${esc(b[1])}">${b[0]}</button>`).join('')}</div><div class="row" style="margin-top:10px">${Object.entries(FL).map(([k,l])=>`<button class="chip ${FE.flags.includes(k)?'on':''}" data-a="feflag" data-v="${k}">${l}</button>`).join('')}</div>`:`<div class="mut" style="margin:0 0 6px">Stelle</div><input type="text" id="felc" value="${esc(FE.loc)}">`}
+<div class="mut" style="margin:12px 0 6px">Zeitpunkt</div><input type="datetime-local" id="fets" value="${FE.ts}"><div style="height:8px"></div><input type="text" id="fenote" value="${esc(FE.note)}" placeholder="Notiz (optional)">
+<div class="row" style="margin-top:14px;flex-wrap:nowrap"><button class="btn gh" data-a="fecancel" style="flex:1">Abbrechen</button><button class="btn" data-a="fesave" style="flex:1">Speichern</button></div></div>`}
+Object.assign(A,{
+fedit:d=>{const f=FD.find(x=>String(x.id)==String(d.id));if(!f)return;FE={id:f.id,kind:f.kind,cat:f.cat,bristol:f.bristol,flags:[...f.flags],loc:f.loc,note:f.note,ts:new Date(f.ts-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16)};feRender()},
+fecancel:()=>{FE=null;feRender()},
+fesel:d=>{if(FE){FE.bristol=+d.v;feRender()}},
+feflag:d=>{if(FE){const i=FE.flags.indexOf(d.v);i<0?FE.flags.push(d.v):FE.flags.splice(i,1);feRender()}},
+fesave:async()=>{if(!FE)return;try{const b={timestamp:FE.ts,notes:FE.note};if(FE.kind=='stool'){b.bristol=FE.bristol;b.details=FE.flags.join(',')}else b.location=FE.loc;await API('PUT','/api/findings/'+FE.id,b);FE=null;feRender();await load();toast('Eintrag aktualisiert ✓')}catch(e){}render()}});
+document.addEventListener('input',e=>{const t=e.target;if(!FE)return;if(t.id=='felc')FE.loc=t.value;else if(t.id=='fets')FE.ts=t.value;else if(t.id=='fenote')FE.note=t.value});
+document.head.insertAdjacentHTML('beforeend','<style>.fthumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.fthumbs img{height:84px;width:auto;max-width:130px;object-fit:cover;border-radius:12px;border:1px solid var(--line);display:block}</style>');
 /* ===== Push-Erinnerung ===== */
 const PUSH={ok:false,avail:false,key:null,sub:false,slots:[]};
 const b64u=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))};
@@ -842,3 +886,4 @@ document.addEventListener('input',e=>{const t=e.target;if(!VD)return;if(t.id=='v
 </script>
 </body>
 </html>
+
